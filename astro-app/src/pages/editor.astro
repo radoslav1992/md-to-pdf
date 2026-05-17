@@ -1,0 +1,17 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import ConverterEditor from '../components/ConverterEditor.tsx';
+---
+
+<BaseLayout title="Editor — Universal Document Converter">
+  <section class="max-w-6xl mx-auto px-4 py-10">
+    <div class="mb-6">
+      <h1 class="text-3xl font-bold text-slate-900">Live editor</h1>
+      <p class="mt-2 text-slate-600">
+        Paste content on the left, pick its input format, and convert. The request goes to
+        <code class="text-xs bg-slate-100 px-1 rounded">/api/convert</code> on the Rust worker.
+      </p>
+    </div>
+    <ConverterEditor client:load />
+  </section>
+</BaseLayout>

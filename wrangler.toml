@@ -1,0 +1,45 @@
+# Root Wrangler configuration
+#
+# This file binds the Astro frontend (Cloudflare Pages) and the Rust Worker
+# backend together using Workers Routes. The Rust worker is configured in
+# rust-backend/wrangler.toml and handles all `/api/*` traffic. The Astro app
+# (in astro-app/) is deployed to Cloudflare Pages and serves everything else.
+#
+# Both deployments share the same hostname through Cloudflare Routes:
+#   - `your-domain.com/api/*`  -> Rust Worker (rust-backend)
+#   - `your-domain.com/*`      -> Astro Pages (astro-app)
+
+name = "universal-document-converter"
+main = "rust-backend/build/worker/shim.mjs"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Build the Rust worker into a Wasm module before publishing.
+[build]
+command = "cd rust-backend && cargo install -q worker-build && worker-build --release"
+
+# Route /api/* requests to the Rust worker. All other traffic is served by the
+# Astro Pages project (configured separately via the Cloudflare dashboard or
+# `wrangler pages deploy astro-app/dist`).
+[[routes]]
+pattern = "your-domain.com/api/*"
+zone_name = "your-domain.com"
+
+# Environment variables consumed by the Rust worker.
+[vars]
+ENVIRONMENT = "production"
+# The Rust worker dispatches to an external headless-browser service for PDF
+# rendering (browsers cannot run inside a Workers isolate). Override per
+# environment via `wrangler secret put PDF_RENDER_URL`.
+PDF_RENDER_URL = "https://chrome.browserless.io/pdf"
+
+# Secrets (set via `wrangler secret put`):
+#   PDF_RENDER_TOKEN  - Bearer token for the external PDF rendering service.
+
+[env.staging]
+name = "universal-document-converter-staging"
+vars = { ENVIRONMENT = "staging" }
+
+[env.production]
+name = "universal-document-converter-production"
+vars = { ENVIRONMENT = "production" }
