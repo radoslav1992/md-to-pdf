@@ -79,6 +79,9 @@ pub async fn run(
             warnings: Vec::new(),
         }),
         "pdf" => {
+            let _permit = state.pdf_semaphore.acquire().await.map_err(|e| {
+                ConvertError::Internal(format!("failed to acquire pdf permit: {e}"))
+            })?;
             let pdf_bytes = pdf::render(&state.chromium_bin, &document).await?;
             let encoded = pdf::encode_base64(&pdf_bytes);
             Ok(ConvertResponse {

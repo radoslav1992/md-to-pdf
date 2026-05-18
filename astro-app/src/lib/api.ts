@@ -93,6 +93,20 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  updateDocument: (
+    id: number,
+    payload: {
+      title: string;
+      type: string;
+      output: 'html' | 'pdf';
+      content: string;
+      rendered_html?: string | null;
+    },
+  ) =>
+    request<{ ok: true; document: SavedDocument }>(`/api/documents/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
   deleteDocument: (id: number) =>
     request<{ ok: true }>(`/api/documents/${id}`, { method: 'DELETE' }),
 

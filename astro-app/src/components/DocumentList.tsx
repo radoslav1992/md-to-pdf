@@ -95,14 +95,22 @@ export default function DocumentList() {
                       {new Date(doc.updated_at * 1000).toLocaleString()}
                     </div>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => onDelete(doc.id)}
-                    disabled={busy}
-                    className="text-xs text-red-600 hover:text-red-700"
-                  >
-                    Delete
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <a
+                      href={`/editor?id=${doc.id}`}
+                      className="text-xs text-brand-600 hover:text-brand-700"
+                    >
+                      Edit
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => onDelete(doc.id)}
+                      disabled={busy}
+                      className="text-xs text-red-600 hover:text-red-700"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </li>
             ))}

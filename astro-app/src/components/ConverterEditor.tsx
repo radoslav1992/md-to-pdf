@@ -8,6 +8,13 @@ type OutputType = 'html' | 'pdf';
 interface Props {
   /** When true, hide premium-only input formats from the picker. Defaults to false. */
   anonymousMode?: boolean;
+  initialData?: {
+    id: number;
+    title: string;
+    type: InputType;
+    output: OutputType;
+    content: string;
+  };
 }
 
 const SAMPLES: Record<InputType, string> = {
@@ -38,16 +45,16 @@ console.log("converted at the edge");
 
 const PREMIUM_INPUTS: InputType[] = ['html', 'json', 'xml'];
 
-export default function ConverterEditor({ anonymousMode = false }: Props) {
+export default function ConverterEditor({ anonymousMode = false, initialData }: Props) {
   const userState = useUser();
-  const [inputType, setInputType] = useState<InputType>('markdown');
-  const [outputType, setOutputType] = useState<OutputType>('html');
-  const [content, setContent] = useState<string>(SAMPLES.markdown);
-  const [title, setTitle] = useState('Untitled');
+  const [inputType, setInputType] = useState<InputType>(initialData?.type ?? 'markdown');
+  const [outputType, setOutputType] = useState<OutputType>(initialData?.output ?? 'html');
+  const [content, setContent] = useState<string>(initialData?.content ?? SAMPLES.markdown);
+  const [title, setTitle] = useState(initialData?.title ?? 'Untitled');
   const [result, setResult] = useState<ConvertResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [savedId, setSavedId] = useState<number | null>(null);
+  const [savedId, setSavedId] = useState<number | null>(initialData?.id ?? null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
@@ -88,21 +95,32 @@ export default function ConverterEditor({ anonymousMode = false }: Props) {
     setError(null);
     setInfo(null);
     try {
-      const res = await api.saveDocument({
-        title: title.trim() || 'Untitled',
-        type: inputType,
-        output: outputType,
-        content,
-        rendered_html: result?.content ?? null,
-      });
-      setSavedId(res.document.id);
-      setInfo(`Saved to your dashboard (#${res.document.id}).`);
+      if (savedId) {
+        const res = await api.updateDocument(savedId, {
+          title: title.trim() || 'Untitled',
+          type: inputType,
+          output: outputType,
+          content,
+          rendered_html: result?.content ?? null,
+        });
+        setInfo(`Updated document #${res.document.id}.`);
+      } else {
+        const res = await api.saveDocument({
+          title: title.trim() || 'Untitled',
+          type: inputType,
+          output: outputType,
+          content,
+          rendered_html: result?.content ?? null,
+        });
+        setSavedId(res.document.id);
+        setInfo(`Saved to your dashboard (#${res.document.id}).`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
-  }, [isAuthed, title, inputType, outputType, content, result]);
+  }, [isAuthed, savedId, title, inputType, outputType, content, result]);
 
   const previewSrcDoc = useMemo(() => {
     if (!result?.content) return '';

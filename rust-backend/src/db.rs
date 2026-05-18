@@ -3,12 +3,16 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{FromRow, SqlitePool};
 use std::str::FromStr;
 
+use std::sync::Arc;
+use tokio::sync::Semaphore;
+
 #[derive(Clone)]
 pub struct AppState {
     pub pool: SqlitePool,
     pub admin_emails: Vec<String>,
     pub cookie_secure: bool,
     pub chromium_bin: String,
+    pub pdf_semaphore: Arc<Semaphore>,
 }
 
 pub async fn connect(url: &str) -> Result<SqlitePool, sqlx::Error> {

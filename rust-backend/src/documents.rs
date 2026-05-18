@@ -79,6 +79,50 @@ pub async fn save(
     get(pool, user, row.0).await
 }
 
+pub async fn update(
+    pool: &SqlitePool,
+    user: &User,
+    id: i64,
+    payload: &SaveDocument,
+) -> Result<Document, ConvertError> {
+    let title = payload.title.trim();
+    if title.is_empty() || title.len() > MAX_TITLE {
+        return Err(ConvertError::BadRequest(
+            "title must be 1..=200 characters".into(),
+        ));
+    }
+    if payload.content.len() > MAX_CONTENT {
+        return Err(ConvertError::PayloadTooLarge(
+            payload.content.len(),
+            MAX_CONTENT,
+        ));
+    }
+
+    let now = now_seconds();
+    let rendered = payload.rendered_html.clone().unwrap_or_default();
+    
+    let result = sqlx::query(
+        "UPDATE documents SET title = ?1, input_type = ?2, output_type = ?3, content = ?4, \
+         rendered_html = ?5, updated_at = ?6 WHERE id = ?7 AND user_id = ?8",
+    )
+    .bind(title)
+    .bind(&payload.input_type)
+    .bind(&payload.output)
+    .bind(&payload.content)
+    .bind(&rendered)
+    .bind(now)
+    .bind(id)
+    .bind(user.id)
+    .execute(pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(ConvertError::NotFound);
+    }
+
+    get(pool, user, id).await
+}
+
 pub async fn delete(pool: &SqlitePool, user: &User, id: i64) -> Result<(), ConvertError> {
     let result = sqlx::query("DELETE FROM documents WHERE id = ?1 AND user_id = ?2")
         .bind(id)

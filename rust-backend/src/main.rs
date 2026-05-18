@@ -58,6 +58,7 @@ async fn main() -> anyhow::Result<()> {
         admin_emails,
         cookie_secure,
         chromium_bin,
+        pdf_semaphore: std::sync::Arc::new(tokio::sync::Semaphore::new(5)),
     };
 
     let app = Router::new()
@@ -70,7 +71,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/documents", get(documents_list).post(documents_create))
         .route(
             "/api/documents/{id}",
-            get(documents_get).delete(documents_delete),
+            get(documents_get)
+                .patch(documents_update)
+                .delete(documents_delete),
         )
         .route("/api/admin/users", get(admin_users))
         .route("/api/admin/users/{id}/role", post(admin_update_role))
@@ -193,6 +196,17 @@ async fn documents_get(
 ) -> Result<Json<serde_json::Value>, ConvertError> {
     let user = auth::require_user(&state, &jar).await?;
     let doc = documents::get(&state.pool, &user, id).await?;
+    Ok(Json(json!({ "ok": true, "document": doc })))
+}
+
+async fn documents_update(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Path(id): Path<i64>,
+    Json(payload): Json<documents::SaveDocument>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let user = auth::require_user(&state, &jar).await?;
+    let doc = documents::update(&state.pool, &user, id, &payload).await?;
     Ok(Json(json!({ "ok": true, "document": doc })))
 }
 

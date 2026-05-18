@@ -1,6 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import ConverterEditor from '../components/ConverterEditor.tsx';
+import EditorWrapper from '../components/EditorWrapper.tsx';
 ---
 
 <BaseLayout title="Editor — Universal Document Converter">
@@ -17,6 +17,6 @@ import ConverterEditor from '../components/ConverterEditor.tsx';
         Your saved documents →
       </a>
     </div>
-    <ConverterEditor client:load />
+    <EditorWrapper client:load />
   </section>
 </BaseLayout>

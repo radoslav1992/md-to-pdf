@@ -1,0 +1,98 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="Pricing — Universal Document Converter">
+  <section class="max-w-6xl mx-auto px-4 py-20 text-center">
+    <h1 class="text-4xl font-bold text-slate-900">Simple, transparent pricing</h1>
+    <p class="mt-4 text-lg text-slate-600">Choose the plan that's right for you.</p>
+
+    <div class="mt-16 grid md:grid-cols-3 gap-8">
+      <!-- Anonymous -->
+      <div class="border border-slate-200 rounded-2xl p-8 flex flex-col">
+        <h2 class="text-xl font-bold text-slate-900">Anonymous</h2>
+        <p class="mt-2 text-slate-500 italic">No account needed</p>
+        <div class="mt-6 flex items-baseline gap-1 justify-center">
+          <span class="text-3xl font-bold">$0</span>
+        </div>
+        <ul class="mt-8 space-y-4 text-sm text-slate-600 text-left">
+          <li class="flex items-center gap-2">
+            <span class="text-emerald-500">✓</span> Markdown to HTML/PDF
+          </li>
+          <li class="flex items-center gap-2">
+            <span class="text-emerald-500">✓</span> 256 KB payloads
+          </li>
+          <li class="flex items-center gap-2 text-slate-400 line-through">
+            <span>✗</span> Save documents
+          </li>
+        </ul>
+        <div class="mt-auto pt-8">
+          <a href="/editor" class="block w-full text-center py-2 rounded-md border border-slate-300 font-medium text-slate-700 hover:bg-slate-50 transition">
+            Try it now
+          </a>
+        </div>
+      </div>
+
+      <!-- Free -->
+      <div class="border border-slate-200 rounded-2xl p-8 flex flex-col bg-slate-50/50">
+        <h2 class="text-xl font-bold text-slate-900">Free Account</h2>
+        <p class="mt-2 text-slate-500 italic">For personal use</p>
+        <div class="mt-6 flex items-baseline gap-1 justify-center">
+          <span class="text-3xl font-bold">$0</span>
+        </div>
+        <ul class="mt-8 space-y-4 text-sm text-slate-600 text-left">
+          <li class="flex items-center gap-2">
+            <span class="text-emerald-500">✓</span> Everything in Anonymous
+          </li>
+          <li class="flex items-center gap-2">
+            <span class="text-emerald-500">✓</span> Save documents to dashboard
+          </li>
+          <li class="flex items-center gap-2">
+            <span class="text-emerald-500">✓</span> Re-render anytime
+          </li>
+        </ul>
+        <div class="mt-auto pt-8">
+          <a href="/signup" class="block w-full text-center py-2 rounded-md bg-slate-900 text-white font-medium hover:bg-slate-800 transition">
+            Create account
+          </a>
+        </div>
+      </div>
+
+      <!-- Premium -->
+      <div class="border-2 border-brand-500 rounded-2xl p-8 flex flex-col bg-brand-50/30 relative">
+        <span class="absolute -top-3 left-1/2 -translate-x-1/2 bg-brand-600 text-white text-[10px] uppercase tracking-wide font-bold px-3 py-1 rounded-full">
+          Most Popular
+        </span>
+        <h2 class="text-xl font-bold text-slate-900">Premium</h2>
+        <p class="mt-2 text-slate-500 italic">For power users</p>
+        <div class="mt-6 flex items-baseline gap-1 justify-center">
+          <span class="text-3xl font-bold">$9</span>
+          <span class="text-slate-500">/mo</span>
+        </div>
+        <ul class="mt-8 space-y-4 text-sm text-slate-600 text-left">
+          <li class="flex items-center gap-2">
+            <span class="text-emerald-500">✓</span> Everything in Free
+          </li>
+          <li class="flex items-center gap-2">
+            <span class="text-emerald-500">✓</span> HTML, JSON, XML inputs
+          </li>
+          <li class="flex items-center gap-2">
+            <span class="text-emerald-500">✓</span> 4 MB payloads (16x larger)
+          </li>
+          <li class="flex items-center gap-2">
+            <span class="text-emerald-500">✓</span> Priority rendering
+          </li>
+        </ul>
+        <div class="mt-auto pt-8">
+          <button disabled class="block w-full text-center py-2 rounded-md bg-brand-600 text-white font-medium opacity-50 cursor-not-allowed">
+            Coming Soon
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <p class="mt-12 text-slate-500 text-sm">
+      Need more? <a href="mailto:support@example.com" class="text-brand-600 hover:underline">Contact us</a> for enterprise plans.
+    </p>
+  </section>
+</BaseLayout>
