@@ -1,0 +1,48 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = 'Convert Markdown, HTML, JSON, and XML into clean documents — at the edge.' } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+  </head>
+  <body class="min-h-screen bg-white text-slate-900 flex flex-col">
+    <header class="border-b border-slate-200 bg-white/80 backdrop-blur sticky top-0 z-40">
+      <nav class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+        <a href="/" class="font-semibold text-lg text-brand-700">Universal Converter</a>
+        <ul class="flex items-center gap-6 text-sm text-slate-700">
+          <li><a href="/" class="hover:text-brand-600">Home</a></li>
+          <li><a href="/editor" class="hover:text-brand-600">Editor</a></li>
+          <li><a href="/blog" class="hover:text-brand-600">Blog</a></li>
+          <li><a href="/legal/terms" class="hover:text-brand-600">Legal</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main class="flex-1">
+      <slot />
+    </main>
+
+    <footer class="border-t border-slate-200 py-8 mt-12">
+      <div class="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between text-sm text-slate-500">
+        <p>&copy; {new Date().getFullYear()} Universal Document Converter</p>
+        <ul class="flex gap-4 mt-2 sm:mt-0">
+          <li><a href="/legal/terms" class="hover:text-brand-600">Terms</a></li>
+          <li><a href="/legal/privacy" class="hover:text-brand-600">Privacy</a></li>
+        </ul>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,36 @@
+---
+import { getCollection, type CollectionEntry } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+export const prerender = true;
+
+export async function getStaticPaths() {
+  const entries = await getCollection('legal');
+  return entries.map((entry) => ({
+    params: { slug: entry.slug },
+    props: { entry },
+  }));
+}
+
+interface Props {
+  entry: CollectionEntry<'legal'>;
+}
+
+const { entry } = Astro.props;
+const { Content } = await entry.render();
+---
+
+<BaseLayout title={`${entry.data.title} — Legal`} description={entry.data.description}>
+  <article class="max-w-3xl mx-auto px-4 py-12">
+    <header class="mb-8">
+      <p class="text-xs uppercase tracking-wide text-slate-500">Legal · v{entry.data.version}</p>
+      <h1 class="text-4xl font-bold text-slate-900 mt-2">{entry.data.title}</h1>
+      <p class="mt-2 text-sm text-slate-500">
+        Effective {entry.data.effectiveDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+      </p>
+    </header>
+    <div class="prose-doc">
+      <Content />
+    </div>
+  </article>
+</BaseLayout>

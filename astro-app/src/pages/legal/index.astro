@@ -1,0 +1,25 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const entries = (await getCollection('legal')).sort((a, b) => a.data.title.localeCompare(b.data.title));
+---
+
+<BaseLayout title="Legal — Universal Document Converter">
+  <section class="max-w-3xl mx-auto px-4 py-12">
+    <h1 class="text-4xl font-bold text-slate-900">Legal</h1>
+    <p class="mt-2 text-slate-600">The fine print, plainly written.</p>
+
+    <ul class="mt-8 space-y-4">
+      {entries.map((entry) => (
+        <li class="border border-slate-200 rounded-lg p-4 hover:border-brand-500 transition">
+          <a href={`/legal/${entry.slug}`} class="block">
+            <h2 class="text-lg font-semibold text-slate-900">{entry.data.title}</h2>
+            <p class="text-sm text-slate-600 mt-1">{entry.data.description}</p>
+            <p class="text-xs text-slate-500 mt-2">Effective {entry.data.effectiveDate.toLocaleDateString('en-US')}</p>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </section>
+</BaseLayout>
