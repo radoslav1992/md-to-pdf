@@ -1,123 +1,151 @@
 # Universal Document Converter
 
-A monorepo SaaS that converts Markdown, HTML, JSON, and XML into normalized
+A SaaS monorepo that converts Markdown, HTML, JSON, and XML into normalized
 HTML and PDF. The frontend is Astro on Cloudflare Pages; the backend is a Rust
-crate compiled to WebAssembly and deployed as a Cloudflare Worker.
+crate compiled to WebAssembly and deployed as a Cloudflare Worker, with
+authentication and saved documents stored in Cloudflare D1.
 
 ```
 /
-├── astro-app/        Astro 5 + React islands + Tailwind, Cloudflare adapter
-├── rust-backend/     Rust crate → Wasm Worker (worker crate)
-├── wrangler.toml     Root config (routes /api/* → worker, rest → Pages)
-└── package.json      npm workspaces + dev scripts
+├── astro-app/           Astro 5 + React islands + Tailwind, Cloudflare adapter
+├── rust-backend/        Rust crate → Wasm Worker (worker crate)
+│   ├── migrations/      D1 schema
+│   └── src/             auth, documents, admin, convert, pdf, crypto, db
+├── wrangler.toml        Root config (routes /api/* → worker, rest → Pages)
+└── package.json         npm workspaces + dev scripts
 ```
+
+## What's in the box
+
+- **Anonymous landing page editor** — paste Markdown, render to PDF, download. No
+  account required.
+- **Free accounts** — save your converted documents to a personal dashboard.
+- **Premium accounts** — unlock HTML, JSON, and XML inputs, plus 4 MB payloads
+  (vs. 256 KB free).
+- **Admin panel** — promote any user to `premium` or `admin` from the web UI.
+  Subscriptions can be wired in later; the role column already drives gating.
+
+| Tier      | Inputs                  | Output      | Max payload | Save? |
+|-----------|-------------------------|-------------|-------------|-------|
+| Anonymous | Markdown                | HTML, PDF   | 256 KB      | No    |
+| Free      | Markdown                | HTML, PDF   | 256 KB      | Yes   |
+| Premium   | Markdown, HTML, JSON, XML | HTML, PDF | 4 MB        | Yes   |
+| Admin     | All of the above + user management                |             |       |
 
 ## Prerequisites
 
 - Node.js ≥ 20
-- Rust (stable) with `wasm32-unknown-unknown` target:
+- Rust (stable) with the Wasm target:
   `rustup target add wasm32-unknown-unknown`
 - `wrangler` CLI (installed as a dev dependency at the root)
 
-## Setup
+## First-time setup
 
 ```sh
 npm install
+
+# Create a D1 database, then paste the returned database_id into rust-backend/wrangler.toml
+wrangler d1 create universal-converter-db
+
+# Apply migrations locally (uses a SQLite file under .wrangler/)
+wrangler d1 execute universal-converter-db --local --file ./rust-backend/migrations/0001_initial.sql
+
+# When deploying for real:
+wrangler d1 execute universal-converter-db --remote --file ./rust-backend/migrations/0001_initial.sql
 ```
 
-## Local development
+Set `ADMIN_EMAILS` in `rust-backend/wrangler.toml` to the address(es) that
+should be auto-promoted to admin the first time they sign up.
 
-Spin up the Astro dev server and the Rust worker in parallel:
+## Local development
 
 ```sh
 npm run dev
 ```
 
-This runs two processes:
+Spawns both processes in parallel:
 
 - `npm run dev:astro` — Astro on http://127.0.0.1:4321
 - `npm run dev:worker` — `wrangler dev` for the Rust worker on http://127.0.0.1:8787
 
-The Astro dev server proxies `/api/*` to the worker (see `astro-app/astro.config.mjs`),
-so visiting http://127.0.0.1:4321/editor and clicking **Convert** routes the
-request through to the Rust backend transparently.
+The Astro dev server proxies `/api/*` to the worker (see
+`astro-app/astro.config.mjs`). Cookies are issued without the `Secure` flag in
+dev (`COOKIE_SECURE=false`), so sessions work over plain `http://`.
 
-## Build
+To get an admin account locally:
 
-```sh
-npm run build
-```
+1. Sign up at http://127.0.0.1:4321/signup using the email listed in
+   `ADMIN_EMAILS` (defaults to `admin@example.com`).
+2. Visit `/admin` — you can now promote other accounts.
 
-- `build:astro` produces `astro-app/dist/` (deployable to Cloudflare Pages)
-- `build:worker` produces a Wasm module via `worker-build` for the worker
-
-## Test
+## Build & deploy
 
 ```sh
-cd rust-backend && cargo test
+npm run build           # Astro static/SSR bundle + Wasm worker
+npm run deploy          # Pages + Worker (requires `wrangler login`)
 ```
 
-## Deploy
-
-The root `wrangler.toml` defines the worker routes (it expects you to replace
-`your-domain.com` with a zone you own). After running `wrangler login`:
-
-```sh
-npm run deploy
-```
-
-- `deploy:astro` publishes the static + SSR output to Pages
-- `deploy:worker` publishes the Rust worker
-
-You can also deploy each side independently:
+Per-side commands:
 
 ```sh
 npm --workspace astro-app run deploy
 cd rust-backend && wrangler deploy
 ```
 
-## API
+For production, also run the migration against the remote database:
 
-### `POST /api/convert`
-
-Request body:
-
-```json
-{
-  "type": "markdown" | "html" | "json" | "xml",
-  "output": "html" | "pdf",
-  "content": "...",
-  "title": "Optional document title"
-}
+```sh
+wrangler d1 execute universal-converter-db --remote --file ./rust-backend/migrations/0001_initial.sql
 ```
 
-Response:
+And set the PDF renderer secret:
 
-```json
-{
-  "ok": true,
-  "output_type": "html",
-  "content": "<!doctype html>..."
-}
+```sh
+wrangler secret put PDF_RENDER_TOKEN
 ```
 
-For PDF output the response contains `pdf_base64` (base64-encoded PDF bytes).
-Headless browsers cannot run inside a Workers isolate, so the worker dispatches
-to an external rendering service (Browserless / Puppeteer-compatible) configured
-via:
+## API reference
 
-- `PDF_RENDER_URL` (var) — render endpoint, defaults to Browserless
-- `PDF_RENDER_TOKEN` (secret) — bearer token, set with `wrangler secret put`
+All endpoints live under `/api` and accept/return JSON. Auth is via an
+HttpOnly cookie issued by signup/login.
 
-### `GET /api/health`
+### Auth
+- `POST /api/auth/signup` `{ email, password }` → user + sets cookie
+- `POST /api/auth/login` `{ email, password }` → user + sets cookie
+- `POST /api/auth/logout` → clears cookie
+- `GET  /api/auth/me` → `{ user: PublicUser | null }`
 
-Returns service metadata for liveness probes.
+### Conversion
+- `POST /api/convert` `{ type, output, content, title? }`
+  - `type`: `markdown | html | json | xml` (HTML/JSON/XML require premium)
+  - `output`: `html | pdf`
+  - Returns `content` (HTML output) or `pdf_base64` (PDF output)
+  - Anonymous OK for Markdown → HTML/PDF
 
-## Content collections
+### Documents (auth required)
+- `GET    /api/documents` — list your saved documents
+- `POST   /api/documents` — save `{ title, type, output, content, rendered_html? }`
+- `GET    /api/documents/:id` — fetch one (only your own)
+- `DELETE /api/documents/:id` — delete one
 
-The Astro app uses content collections for `/blog` and `/legal`:
+### Admin (admin role required)
+- `GET  /api/admin/users` — list all users
+- `POST /api/admin/users/:id/role` `{ role: "free" | "premium" | "admin" }`
 
-- `astro-app/src/content/blog/*.md` — blog posts (schema in `config.ts`)
-- `astro-app/src/content/legal/*.md` — legal documents
+## Architecture notes
 
-Both are prerendered to static HTML during build.
+- **Sessions** are random 32-byte hex tokens stored in D1; cookies are
+  HttpOnly + SameSite=Lax (+ Secure in production). Tokens expire after 30 days.
+- **Passwords** are hashed with PBKDF2-HMAC-SHA256 (10k iterations) using a
+  per-user 16-byte salt. Constant-time comparison via the `subtle` crate.
+- **PDF rendering** dispatches an HTTPS request from the worker to an external
+  headless-browser service (`PDF_RENDER_URL`), because Chromium cannot run
+  inside a Workers isolate.
+- **Content collections** in Astro (`/blog`, `/legal`) are prerendered to
+  static HTML during build.
+
+## Tests
+
+```sh
+cd rust-backend && cargo test
+```

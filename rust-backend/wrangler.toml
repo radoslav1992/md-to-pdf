@@ -13,11 +13,27 @@ command = "cargo install -q worker-build && worker-build --release"
 [vars]
 ENVIRONMENT = "development"
 PDF_RENDER_URL = "https://chrome.browserless.io/pdf"
+# Comma-separated list of emails that should be auto-promoted to admin on signup.
+ADMIN_EMAILS = "admin@example.com"
+# Cookies are marked Secure in production; left off here so the dev cookie works on http://127.0.0.1.
+COOKIE_SECURE = "false"
 
-# Secrets:
-#   PDF_RENDER_TOKEN  -  Bearer token for the external PDF rendering service.
+# Secrets (set via `wrangler secret put`):
+#   PDF_RENDER_TOKEN  - Bearer token for the external PDF rendering service.
+
+# D1 database binding — create the database with:
+#   wrangler d1 create universal-converter-db
+# then paste the returned `database_id` below.
+[[d1_databases]]
+binding = "DB"
+database_name = "universal-converter-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
 
 [dev]
 port = 8787
 ip = "127.0.0.1"
 local_protocol = "http"
+
+[env.production]
+vars = { ENVIRONMENT = "production", COOKIE_SECURE = "true", PDF_RENDER_URL = "https://chrome.browserless.io/pdf", ADMIN_EMAILS = "" }

@@ -1,50 +1,72 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import ConverterEditor from '../components/ConverterEditor.tsx';
 ---
 
-<BaseLayout title="Universal Document Converter — Markdown, HTML, JSON, XML to PDF">
-  <section class="max-w-6xl mx-auto px-4 py-16 md:py-24">
+<BaseLayout title="Universal Document Converter — Markdown to PDF, free at the edge">
+  <section class="max-w-6xl mx-auto px-4 py-16 md:py-20">
     <div class="text-center max-w-3xl mx-auto">
-      <span class="inline-block bg-brand-50 text-brand-700 text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wide">Edge-rendered · Rust · Cloudflare</span>
+      <span class="inline-block bg-brand-50 text-brand-700 text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wide">
+        Free for everyone · Rust on Cloudflare
+      </span>
       <h1 class="text-4xl md:text-6xl font-bold tracking-tight mt-4 text-slate-900">
-        Convert any document format. <span class="text-brand-600">In milliseconds.</span>
+        Markdown to PDF. <span class="text-brand-600">No sign-up required.</span>
       </h1>
       <p class="mt-6 text-lg text-slate-600">
-        A single API for Markdown, HTML, JSON, and XML. Normalize, transform, and render to PDF —
-        all from a Rust worker running at the edge.
+        Try the converter below — paste Markdown, render to PDF, download it. Create a free account
+        to save your documents, and upgrade to premium for HTML, JSON, and XML inputs.
       </p>
-      <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
-        <a href="/editor" class="bg-brand-600 hover:bg-brand-700 text-white font-medium px-6 py-3 rounded-lg transition">
-          Try the editor
-        </a>
-        <a href="/blog" class="border border-slate-300 hover:border-slate-400 text-slate-800 font-medium px-6 py-3 rounded-lg transition">
-          Read the blog
-        </a>
-      </div>
     </div>
   </section>
 
-  <section class="max-w-6xl mx-auto px-4 pb-20">
-    <div class="grid md:grid-cols-3 gap-6">
+  <section class="max-w-6xl mx-auto px-4 pb-10">
+    <div class="border border-slate-200 rounded-2xl p-4 md:p-6 bg-slate-50/40">
+      <ConverterEditor anonymousMode={true} client:load />
+    </div>
+  </section>
+
+  <section class="max-w-6xl mx-auto px-4 py-16">
+    <h2 class="text-2xl font-bold text-slate-900 text-center">Plans</h2>
+    <div class="mt-8 grid md:grid-cols-3 gap-6">
       <div class="border border-slate-200 rounded-xl p-6">
-        <h3 class="text-lg font-semibold text-slate-900">Universal input</h3>
-        <p class="mt-2 text-slate-600 text-sm">
-          Send Markdown, HTML, JSON, or XML. The Rust engine normalizes each format
-          to a common intermediate representation before rendering.
-        </p>
+        <h3 class="text-lg font-semibold text-slate-900">Anonymous</h3>
+        <p class="mt-1 text-sm text-slate-500">No account needed.</p>
+        <ul class="mt-4 space-y-2 text-sm text-slate-700">
+          <li>✓ Markdown → HTML / PDF</li>
+          <li>✓ 256 KB payloads</li>
+          <li>✗ Cannot save documents</li>
+        </ul>
+        <a
+          href="#"
+          class="mt-6 inline-block text-sm text-brand-600 hover:text-brand-700"
+          >You're using this right now ↑</a>
       </div>
       <div class="border border-slate-200 rounded-xl p-6">
-        <h3 class="text-lg font-semibold text-slate-900">Edge-native</h3>
-        <p class="mt-2 text-slate-600 text-sm">
-          Compiled to WebAssembly with the <code class="text-xs bg-slate-100 px-1 rounded">worker</code> crate.
-          No cold starts, no servers, near-zero latency.
-        </p>
+        <h3 class="text-lg font-semibold text-slate-900">Free account</h3>
+        <p class="mt-1 text-sm text-slate-500">Everything above, plus:</p>
+        <ul class="mt-4 space-y-2 text-sm text-slate-700">
+          <li>✓ Save documents to your dashboard</li>
+          <li>✓ Re-render anytime</li>
+        </ul>
+        <a
+          href="/signup"
+          class="mt-6 inline-block bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-md transition"
+          >Create a free account</a>
       </div>
-      <div class="border border-slate-200 rounded-xl p-6">
-        <h3 class="text-lg font-semibold text-slate-900">PDF rendering</h3>
-        <p class="mt-2 text-slate-600 text-sm">
-          Dispatches HTML to an external headless-browser service for accurate PDF output —
-          configurable and BYO-able.
+      <div class="border-2 border-brand-500 rounded-xl p-6 bg-brand-50/30 relative">
+        <span class="absolute -top-3 right-4 bg-brand-600 text-white text-[10px] uppercase tracking-wide font-semibold px-2 py-0.5 rounded">
+          Premium
+        </span>
+        <h3 class="text-lg font-semibold text-slate-900">Premium</h3>
+        <p class="mt-1 text-sm text-slate-500">For power users.</p>
+        <ul class="mt-4 space-y-2 text-sm text-slate-700">
+          <li>✓ HTML, JSON, XML inputs</li>
+          <li>✓ 4 MB payloads (16× larger)</li>
+          <li>✓ Save any input type</li>
+        </ul>
+        <p class="mt-6 text-xs text-slate-500">
+          Subscriptions are coming soon. In the meantime, an admin can grant premium manually —
+          email <a href="mailto:admin@example.com" class="text-brand-600">admin@example.com</a>.
         </p>
       </div>
     </div>

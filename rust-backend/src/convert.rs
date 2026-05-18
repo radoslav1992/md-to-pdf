@@ -1,10 +1,16 @@
 use serde::{Deserialize, Serialize};
 use worker::Env;
 
+use crate::db::User;
 use crate::error::ConvertError;
 use crate::pdf;
 
-const MAX_INPUT_BYTES: usize = 2 * 1024 * 1024; // 2 MiB
+const MAX_INPUT_BYTES_FREE: usize = 256 * 1024; // 256 KiB for anonymous + free
+const MAX_INPUT_BYTES_PREMIUM: usize = 4 * 1024 * 1024; // 4 MiB for premium/admin
+
+// Free users (and anonymous visitors) can convert Markdown — that's the demo
+// surface. HTML / JSON / XML inputs are reserved for premium accounts.
+const FREE_INPUTS: &[&str] = &["markdown", "md"];
 
 #[derive(Debug, Deserialize)]
 pub struct ConvertRequest {
@@ -25,6 +31,7 @@ fn default_output() -> String {
 pub struct ConvertResponse {
     pub ok: bool,
     pub output_type: String,
+    pub input_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -33,16 +40,32 @@ pub struct ConvertResponse {
     pub warnings: Vec<String>,
 }
 
-pub async fn run(req: &ConvertRequest, env: &Env) -> Result<ConvertResponse, ConvertError> {
-    if req.content.len() > MAX_INPUT_BYTES {
-        return Err(ConvertError::PayloadTooLarge(
-            req.content.len(),
-            MAX_INPUT_BYTES,
-        ));
+/// Run a conversion. `user` is `None` for anonymous (landing-page) traffic.
+pub async fn run(
+    req: &ConvertRequest,
+    env: &Env,
+    user: Option<&User>,
+) -> Result<ConvertResponse, ConvertError> {
+    let normalized_input = req.input_type.to_ascii_lowercase();
+    let is_premium = user.map(|u| u.is_premium()).unwrap_or(false);
+
+    // Gate premium-only input formats.
+    if !is_premium && !FREE_INPUTS.contains(&normalized_input.as_str()) {
+        return Err(ConvertError::PremiumRequired);
+    }
+
+    // Apply size limits based on tier.
+    let max = if is_premium {
+        MAX_INPUT_BYTES_PREMIUM
+    } else {
+        MAX_INPUT_BYTES_FREE
+    };
+    if req.content.len() > max {
+        return Err(ConvertError::PayloadTooLarge(req.content.len(), max));
     }
 
     // Step 1 — normalize to HTML regardless of input format.
-    let html = match req.input_type.to_ascii_lowercase().as_str() {
+    let html = match normalized_input.as_str() {
         "markdown" | "md" => markdown_to_html(&req.content),
         "html" => sanitize_html(&req.content),
         "json" => json_to_html(&req.content)?,
@@ -58,6 +81,7 @@ pub async fn run(req: &ConvertRequest, env: &Env) -> Result<ConvertResponse, Con
         "html" => Ok(ConvertResponse {
             ok: true,
             output_type: "html".to_string(),
+            input_type: normalized_input,
             content: Some(document),
             pdf_base64: None,
             warnings: Vec::new(),
@@ -68,6 +92,7 @@ pub async fn run(req: &ConvertRequest, env: &Env) -> Result<ConvertResponse, Con
             Ok(ConvertResponse {
                 ok: true,
                 output_type: "pdf".to_string(),
+                input_type: normalized_input,
                 content: None,
                 pdf_base64: Some(encoded),
                 warnings: Vec::new(),
@@ -117,7 +142,6 @@ fn xml_to_html(input: &str) -> Result<String, ConvertError> {
     use quick_xml::events::Event;
     use quick_xml::Reader;
 
-    // Validate by streaming through the reader; reject malformed input.
     let mut reader = Reader::from_str(input);
     reader.config_mut().trim_text(true);
     let mut buf = Vec::new();
@@ -134,7 +158,6 @@ fn xml_to_html(input: &str) -> Result<String, ConvertError> {
         }
         buf.clear();
     }
-
     Ok(format!(
         "<pre class=\"language-xml\"><code>{}</code></pre>",
         html_escape(input)
