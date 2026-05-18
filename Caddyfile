@@ -1,0 +1,28 @@
+# Plain-HTTP listener on port 80. When a domain is added later, replace `:80`
+# with the domain name and Caddy will auto-provision Let's Encrypt TLS.
+
+:80 {
+    encode zstd gzip
+
+    # Reverse-proxy the JSON API to the api container.
+    @api path /api/*
+    handle @api {
+        reverse_proxy api:8000 {
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Real-IP {remote_host}
+        }
+    }
+
+    # Static Astro build for everything else.
+    handle {
+        root * /srv/web
+        try_files {path} {path}/index.html {path}.html /index.html
+        file_server
+    }
+
+    log {
+        output stdout
+        format console
+        level INFO
+    }
+}

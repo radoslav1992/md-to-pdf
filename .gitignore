@@ -10,15 +10,15 @@ astro-app/.output/
 
 # Rust
 rust-backend/target/
-rust-backend/build/
 **/*.rs.bk
 
-# Wrangler
-.wrangler/
-.dev.vars
-.dev.vars.*
+# Local SQLite databases (created by `cargo run`)
+*.db
+*.db-shm
+*.db-wal
+rust-backend/dev.db*
 
-# Env
+# Env files
 .env
 .env.local
 .env.*.local

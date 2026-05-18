@@ -1,0 +1,22 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import AuthForm from '../components/AuthForm.tsx';
+---
+
+<BaseLayout title="Sign up — Universal Document Converter">
+  <section class="max-w-md mx-auto px-4 py-16">
+    <h1 class="text-2xl font-bold text-slate-900 text-center">Create your account</h1>
+    <p class="mt-2 text-sm text-slate-600 text-center">
+      Free forever. Saves your documents and unlocks the dashboard.
+    </p>
+    <div class="mt-8 border border-slate-200 rounded-xl p-6 bg-white">
+      <AuthForm mode="signup" client:load />
+    </div>
+    <p class="mt-6 text-xs text-slate-500 text-center">
+      By signing up you agree to our
+      <a href="/legal/terms" class="text-brand-600 hover:text-brand-700">Terms</a>
+      and
+      <a href="/legal/privacy" class="text-brand-600 hover:text-brand-700">Privacy Policy</a>.
+    </p>
+  </section>
+</BaseLayout>

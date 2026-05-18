@@ -1,75 +1,68 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use serde::Serialize;
-use worker::{Env, Fetch, Headers, Method, Request, RequestInit};
+use std::io::Write;
+use tempfile::NamedTempFile;
+use tokio::process::Command;
 
 use crate::error::ConvertError;
 
-/// Dispatch an outbound HTTPS request to an external headless-browser service
-/// (Browserless, Puppeteer-compatible) to render HTML to PDF. Headless
-/// browsers cannot execute inside a Workers isolate, so this hop is required.
-pub async fn render(html: &str, env: &Env) -> Result<Vec<u8>, ConvertError> {
-    let url = env
-        .var("PDF_RENDER_URL")
-        .map_err(|_| ConvertError::PdfNotConfigured)?
-        .to_string();
+/// Render HTML to a PDF byte buffer by spawning a local headless Chromium
+/// process. The binary path is configured via `CHROMIUM_BIN` (defaults to
+/// `chromium`). The HTML is written to a temp file and Chromium's
+/// `--print-to-pdf` flag emits the PDF to another temp file, which we then
+/// read back.
+pub async fn render(chromium_bin: &str, html: &str) -> Result<Vec<u8>, ConvertError> {
+    let mut html_file = NamedTempFile::with_suffix(".html")
+        .map_err(|e| ConvertError::Internal(format!("temp html: {e}")))?;
+    html_file
+        .write_all(html.as_bytes())
+        .map_err(|e| ConvertError::Internal(format!("write html: {e}")))?;
+    html_file
+        .flush()
+        .map_err(|e| ConvertError::Internal(format!("flush html: {e}")))?;
+    let html_path = html_file.path().to_path_buf();
 
-    let token = env.secret("PDF_RENDER_TOKEN").ok().map(|t| t.to_string());
+    let pdf_file = NamedTempFile::with_suffix(".pdf")
+        .map_err(|e| ConvertError::Internal(format!("temp pdf: {e}")))?;
+    let pdf_path = pdf_file.path().to_path_buf();
+    // We need Chromium to be able to write to this path; drop the handle but
+    // keep the path. The TempPath cleans up on drop.
+    let pdf_path_handle = pdf_file.into_temp_path();
 
-    let payload = RenderPayload {
-        html,
-        options: RenderOptions {
-            print_background: true,
-            format: "A4",
-            margin: PageMargin {
-                top: "0.4in",
-                right: "0.4in",
-                bottom: "0.4in",
-                left: "0.4in",
-            },
-        },
-    };
-
-    let body = serde_json::to_string(&payload)
-        .map_err(|e| ConvertError::Internal(format!("payload encode: {e}")))?;
-
-    let mut headers = Headers::new();
-    headers
-        .set("content-type", "application/json")
-        .map_err(|e| ConvertError::Internal(e.to_string()))?;
-    headers
-        .set("accept", "application/pdf")
-        .map_err(|e| ConvertError::Internal(e.to_string()))?;
-    if let Some(t) = token {
-        headers
-            .set("authorization", &format!("Bearer {t}"))
-            .map_err(|e| ConvertError::Internal(e.to_string()))?;
-    }
-
-    let mut init = RequestInit::new();
-    init.with_method(Method::Post)
-        .with_headers(headers)
-        .with_body(Some(body.into()));
-
-    let request = Request::new_with_init(&url, &init)
-        .map_err(|e| ConvertError::Internal(format!("build request: {e}")))?;
-
-    let mut response = Fetch::Request(request)
-        .send()
+    let output = Command::new(chromium_bin)
+        .args([
+            "--headless=new",
+            "--disable-gpu",
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--hide-scrollbars",
+            "--run-all-compositor-stages-before-draw",
+            "--no-pdf-header-footer",
+            &format!("--print-to-pdf={}", pdf_path.display()),
+            &format!("file://{}", html_path.display()),
+        ])
+        .output()
         .await
-        .map_err(|e| ConvertError::PdfRender(format!("upstream fetch failed: {e}")))?;
+        .map_err(|e| ConvertError::PdfRender(format!("spawn chromium: {e}")))?;
 
-    let status = response.status_code();
-    if !(200..300).contains(&status) {
-        let text = response.text().await.unwrap_or_default();
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(ConvertError::PdfRender(format!(
-            "upstream returned {status}: {text}"
+            "chromium exited with {}: {}",
+            output.status,
+            truncate(&stderr, 500)
         )));
     }
 
-    let bytes = response
-        .bytes()
+    let bytes = tokio::fs::read(&pdf_path)
         .await
-        .map_err(|e| ConvertError::PdfRender(format!("read body: {e}")))?;
+        .map_err(|e| ConvertError::PdfRender(format!("read pdf: {e}")))?;
+
+    drop(pdf_path_handle);
+    drop(html_file);
+
+    if bytes.is_empty() {
+        return Err(ConvertError::PdfRender("chromium produced empty PDF".into()));
+    }
     Ok(bytes)
 }
 
@@ -77,24 +70,10 @@ pub fn encode_base64(bytes: &[u8]) -> String {
     STANDARD.encode(bytes)
 }
 
-#[derive(Serialize)]
-struct RenderPayload<'a> {
-    html: &'a str,
-    options: RenderOptions,
-}
-
-#[derive(Serialize)]
-struct RenderOptions {
-    #[serde(rename = "printBackground")]
-    print_background: bool,
-    format: &'static str,
-    margin: PageMargin,
-}
-
-#[derive(Serialize)]
-struct PageMargin {
-    top: &'static str,
-    right: &'static str,
-    bottom: &'static str,
-    left: &'static str,
+fn truncate(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        format!("{}…", &s[..max])
+    }
 }
