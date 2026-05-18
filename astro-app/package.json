@@ -7,11 +7,9 @@
     "dev": "astro dev --host 127.0.0.1 --port 4321",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro",
-    "deploy": "wrangler pages deploy dist --project-name universal-document-converter"
+    "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "^12.0.0",
     "@astrojs/react": "^4.0.0",
     "@astrojs/tailwind": "^6.0.0",
     "@types/react": "^19.0.0",

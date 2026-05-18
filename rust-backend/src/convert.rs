@@ -1,15 +1,12 @@
 use serde::{Deserialize, Serialize};
-use worker::Env;
 
-use crate::db::User;
+use crate::db::{AppState, User};
 use crate::error::ConvertError;
 use crate::pdf;
 
 const MAX_INPUT_BYTES_FREE: usize = 256 * 1024; // 256 KiB for anonymous + free
 const MAX_INPUT_BYTES_PREMIUM: usize = 4 * 1024 * 1024; // 4 MiB for premium/admin
 
-// Free users (and anonymous visitors) can convert Markdown — that's the demo
-// surface. HTML / JSON / XML inputs are reserved for premium accounts.
 const FREE_INPUTS: &[&str] = &["markdown", "md"];
 
 #[derive(Debug, Deserialize)]
@@ -40,21 +37,18 @@ pub struct ConvertResponse {
     pub warnings: Vec<String>,
 }
 
-/// Run a conversion. `user` is `None` for anonymous (landing-page) traffic.
 pub async fn run(
     req: &ConvertRequest,
-    env: &Env,
+    state: &AppState,
     user: Option<&User>,
 ) -> Result<ConvertResponse, ConvertError> {
     let normalized_input = req.input_type.to_ascii_lowercase();
     let is_premium = user.map(|u| u.is_premium()).unwrap_or(false);
 
-    // Gate premium-only input formats.
     if !is_premium && !FREE_INPUTS.contains(&normalized_input.as_str()) {
         return Err(ConvertError::PremiumRequired);
     }
 
-    // Apply size limits based on tier.
     let max = if is_premium {
         MAX_INPUT_BYTES_PREMIUM
     } else {
@@ -64,7 +58,6 @@ pub async fn run(
         return Err(ConvertError::PayloadTooLarge(req.content.len(), max));
     }
 
-    // Step 1 — normalize to HTML regardless of input format.
     let html = match normalized_input.as_str() {
         "markdown" | "md" => markdown_to_html(&req.content),
         "html" => sanitize_html(&req.content),
@@ -76,7 +69,6 @@ pub async fn run(
     let title = req.title.clone().unwrap_or_else(|| "Document".to_string());
     let document = wrap_document(&title, &html);
 
-    // Step 2 — dispatch to requested output format.
     match req.output.to_ascii_lowercase().as_str() {
         "html" => Ok(ConvertResponse {
             ok: true,
@@ -87,7 +79,7 @@ pub async fn run(
             warnings: Vec::new(),
         }),
         "pdf" => {
-            let pdf_bytes = pdf::render(&document, env).await?;
+            let pdf_bytes = pdf::render(&state.chromium_bin, &document).await?;
             let encoded = pdf::encode_base64(&pdf_bytes);
             Ok(ConvertResponse {
                 ok: true,

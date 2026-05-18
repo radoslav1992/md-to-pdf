@@ -1,7 +1,7 @@
 use serde::Deserialize;
-use worker::Env;
+use sqlx::SqlitePool;
 
-use crate::db::{self, PublicUser, User};
+use crate::db::{PublicUser, User};
 use crate::error::ConvertError;
 
 const ALLOWED_ROLES: &[&str] = &["free", "premium", "admin"];
@@ -11,23 +11,18 @@ pub struct UpdateRole {
     pub role: String,
 }
 
-pub async fn list_users(env: &Env) -> Result<Vec<PublicUser>, ConvertError> {
-    let result = db::d1(env)?
-        .prepare(
-            "SELECT id, email, password_hash, password_salt, role, created_at \
-             FROM users ORDER BY created_at DESC",
-        )
-        .all()
-        .await
-        .map_err(|e| ConvertError::Database(e.to_string()))?;
-    let users: Vec<User> = result
-        .results::<User>()
-        .map_err(|e| ConvertError::Database(e.to_string()))?;
+pub async fn list_users(pool: &SqlitePool) -> Result<Vec<PublicUser>, ConvertError> {
+    let users: Vec<User> = sqlx::query_as(
+        "SELECT id, email, password_hash, password_salt, role, created_at \
+         FROM users ORDER BY created_at DESC",
+    )
+    .fetch_all(pool)
+    .await?;
     Ok(users.iter().map(User::public).collect())
 }
 
 pub async fn update_role(
-    env: &Env,
+    pool: &SqlitePool,
     actor: &User,
     target_id: i64,
     update: &UpdateRole,
@@ -39,39 +34,27 @@ pub async fn update_role(
             ALLOWED_ROLES.join(", ")
         )));
     }
-    // Guard against an admin demoting themselves and locking the system out.
     if actor.id == target_id && role != "admin" {
         return Err(ConvertError::Forbidden(
             "admins cannot remove their own admin role".into(),
         ));
     }
-    let db = db::d1(env)?;
-    let result = db
-        .prepare("UPDATE users SET role = ?1 WHERE id = ?2")
-        .bind(&[role.into(), target_id.into()])
-        .map_err(|e| ConvertError::Database(e.to_string()))?
-        .run()
-        .await
-        .map_err(|e| ConvertError::Database(e.to_string()))?;
-    let changes = result
-        .meta()
-        .map_err(|e| ConvertError::Database(e.to_string()))?
-        .and_then(|m| m.changes)
-        .unwrap_or(0);
-    if changes == 0 {
+    let result = sqlx::query("UPDATE users SET role = ?1 WHERE id = ?2")
+        .bind(&role)
+        .bind(target_id)
+        .execute(pool)
+        .await?;
+    if result.rows_affected() == 0 {
         return Err(ConvertError::NotFound);
     }
 
-    let updated = db
-        .prepare(
-            "SELECT id, email, password_hash, password_salt, role, created_at \
-             FROM users WHERE id = ?1",
-        )
-        .bind(&[target_id.into()])
-        .map_err(|e| ConvertError::Database(e.to_string()))?
-        .first::<User>(None)
-        .await
-        .map_err(|e| ConvertError::Database(e.to_string()))?
-        .ok_or(ConvertError::NotFound)?;
+    let updated: User = sqlx::query_as(
+        "SELECT id, email, password_hash, password_salt, role, created_at \
+         FROM users WHERE id = ?1",
+    )
+    .bind(target_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ConvertError::NotFound)?;
     Ok(updated.public())
 }

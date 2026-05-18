@@ -2,26 +2,25 @@
   "name": "universal-document-converter",
   "version": "0.1.0",
   "private": true,
-  "description": "Universal Document Converter SaaS - Astro frontend + Rust Worker backend on Cloudflare",
+  "description": "Universal Document Converter SaaS — Astro static site + Rust (axum) API + local Chromium for PDFs.",
   "workspaces": [
     "astro-app"
   ],
   "scripts": {
-    "dev": "npm-run-all --parallel dev:astro dev:worker",
-    "dev:astro": "npm --workspace astro-app run dev",
-    "dev:worker": "cd rust-backend && wrangler dev",
-    "build": "npm-run-all build:worker build:astro",
-    "build:astro": "npm --workspace astro-app run build",
-    "build:worker": "cd rust-backend && cargo build --release --target wasm32-unknown-unknown",
-    "deploy": "npm-run-all build:worker deploy:astro deploy:worker",
-    "deploy:astro": "npm --workspace astro-app run deploy",
-    "deploy:worker": "cd rust-backend && wrangler deploy",
-    "preview": "npm --workspace astro-app run preview",
+    "dev": "npm-run-all --parallel dev:api dev:web",
+    "dev:web": "npm --workspace astro-app run dev",
+    "dev:api": "cd rust-backend && RUST_LOG=${RUST_LOG:-info} DATABASE_URL=${DATABASE_URL:-sqlite:./dev.db} BIND_ADDR=${BIND_ADDR:-127.0.0.1:8000} CHROMIUM_BIN=${CHROMIUM_BIN:-chromium} ADMIN_EMAILS=${ADMIN_EMAILS:-admin@example.com} COOKIE_SECURE=${COOKIE_SECURE:-false} cargo run",
+    "build": "npm-run-all build:api build:web",
+    "build:web": "npm --workspace astro-app run build",
+    "build:api": "cd rust-backend && cargo build --release",
+    "test": "cd rust-backend && cargo test",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
     "clean": "rm -rf astro-app/dist astro-app/.astro rust-backend/target node_modules astro-app/node_modules"
   },
   "devDependencies": {
-    "npm-run-all": "^4.1.5",
-    "wrangler": "^3.90.0"
+    "npm-run-all": "^4.1.5"
   },
   "engines": {
     "node": ">=20.0.0"

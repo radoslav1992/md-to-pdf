@@ -1,0 +1,42 @@
+name: universal-converter
+
+services:
+  api:
+    build:
+      context: ./rust-backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # Override these via a .env file at the repo root (see .env.example).
+      BIND_ADDR: 0.0.0.0:8000
+      DATABASE_URL: sqlite:/data/converter.db
+      CHROMIUM_BIN: /usr/bin/chromium
+      RUST_LOG: ${RUST_LOG:-info}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    volumes:
+      - api_data:/data
+    # Memory cap that protects the host from runaway chromium instances.
+    mem_limit: 2g
+    networks:
+      - internal
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  api_data:
+    driver: local

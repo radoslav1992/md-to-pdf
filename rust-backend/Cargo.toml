@@ -3,33 +3,53 @@ name = "rust-backend"
 version = "0.1.0"
 edition = "2021"
 authors = ["Universal Converter Team"]
-description = "Universal Document Converter — Cloudflare Worker backend"
+description = "Universal Document Converter — self-hosted axum backend"
 license = "MIT"
 
-[lib]
-crate-type = ["cdylib", "rlib"]
+[[bin]]
+name = "api"
+path = "src/main.rs"
 
 [dependencies]
-worker = { version = "0.5", features = ["http", "d1"] }
-worker-macros = "0.5"
+# HTTP server
+axum = { version = "0.8", features = ["macros"] }
+axum-extra = { version = "0.10", features = ["cookie", "typed-header"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "cors", "limit"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+time = "0.3"
+
+# Database
+sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio", "migrate", "macros"] }
+
+# Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
+# Conversion
 pulldown-cmark = { version = "0.12", default-features = false, features = ["html"] }
 quick-xml = { version = "0.36", features = ["serialize"] }
 ammonia = { version = "4.0", default-features = false }
 base64 = "0.22"
-console_error_panic_hook = "0.1"
-wasm-bindgen = "0.2"
-wasm-bindgen-futures = "0.4"
+
+# Errors
 thiserror = "1.0"
-getrandom = { version = "0.2", features = ["js"] }
+anyhow = "1.0"
+
+# Crypto
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 sha2 = { version = "0.10", default-features = false }
-hex = { version = "0.4", default-features = false, features = ["alloc"] }
-subtle = { version = "2.6", default-features = false }
+hex = "0.4"
+subtle = "2.6"
+rand = "0.8"
+
+# Process management
+tempfile = "3"
 
 [profile.release]
-opt-level = "s"
+opt-level = 3
 lto = true
 codegen-units = 1
 strip = true

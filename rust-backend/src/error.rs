@@ -1,5 +1,8 @@
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::Json;
+use serde_json::json;
 use thiserror::Error;
-use worker::{Response, Result};
 
 #[derive(Debug, Error)]
 pub enum ConvertError {
@@ -10,11 +13,12 @@ pub enum ConvertError {
     #[error("payload too large: {0} bytes (max {1})")]
     PayloadTooLarge(usize, usize),
     #[error("parse error ({format}): {message}")]
-    Parse { format: &'static str, message: String },
+    Parse {
+        format: &'static str,
+        message: String,
+    },
     #[error("PDF rendering failed: {0}")]
     PdfRender(String),
-    #[error("PDF render service not configured")]
-    PdfNotConfigured,
     #[error("invalid request: {0}")]
     BadRequest(String),
     #[error("authentication required")]
@@ -33,31 +37,46 @@ pub enum ConvertError {
     Internal(String),
 }
 
-pub fn bad_request(message: &str) -> Result<Response> {
-    error_response(400, message)
+impl From<sqlx::Error> for ConvertError {
+    fn from(e: sqlx::Error) -> Self {
+        ConvertError::Database(e.to_string())
+    }
 }
 
-pub fn from_convert_error(err: ConvertError) -> Result<Response> {
-    let status = match &err {
-        ConvertError::UnsupportedInput(_)
-        | ConvertError::UnsupportedOutput(_)
-        | ConvertError::BadRequest(_) => 400,
-        ConvertError::Unauthorized => 401,
-        ConvertError::Forbidden(_) | ConvertError::PremiumRequired => 403,
-        ConvertError::NotFound => 404,
-        ConvertError::Conflict(_) => 409,
-        ConvertError::PayloadTooLarge(_, _) => 413,
-        ConvertError::Parse { .. } => 422,
-        ConvertError::PdfNotConfigured => 503,
-        ConvertError::PdfRender(_) | ConvertError::Database(_) | ConvertError::Internal(_) => 502,
-    };
-    error_response(status, &err.to_string())
+impl From<std::io::Error> for ConvertError {
+    fn from(e: std::io::Error) -> Self {
+        ConvertError::Internal(format!("io: {e}"))
+    }
 }
 
-fn error_response(status: u16, message: &str) -> Result<Response> {
-    let body = serde_json::json!({
-        "ok": false,
-        "error": message,
-    });
-    Response::from_json(&body).map(|r| r.with_status(status))
+impl ConvertError {
+    pub fn status(&self) -> StatusCode {
+        match self {
+            ConvertError::UnsupportedInput(_)
+            | ConvertError::UnsupportedOutput(_)
+            | ConvertError::BadRequest(_) => StatusCode::BAD_REQUEST,
+            ConvertError::Unauthorized => StatusCode::UNAUTHORIZED,
+            ConvertError::Forbidden(_) | ConvertError::PremiumRequired => StatusCode::FORBIDDEN,
+            ConvertError::NotFound => StatusCode::NOT_FOUND,
+            ConvertError::Conflict(_) => StatusCode::CONFLICT,
+            ConvertError::PayloadTooLarge(_, _) => StatusCode::PAYLOAD_TOO_LARGE,
+            ConvertError::Parse { .. } => StatusCode::UNPROCESSABLE_ENTITY,
+            ConvertError::PdfRender(_)
+            | ConvertError::Database(_)
+            | ConvertError::Internal(_) => StatusCode::BAD_GATEWAY,
+        }
+    }
+}
+
+impl IntoResponse for ConvertError {
+    fn into_response(self) -> Response {
+        let status = self.status();
+        let message = self.to_string();
+        if status.is_server_error() {
+            tracing::error!(error = %message, "request failed");
+        } else {
+            tracing::debug!(error = %message, "request rejected");
+        }
+        (status, Json(json!({ "ok": false, "error": message }))).into_response()
+    }
 }

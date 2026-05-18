@@ -1,0 +1,23 @@
+# syntax=docker/dockerfile:1.7
+#
+# Web image: builds the Astro static site, then bakes it into a Caddy image
+# that also reverse-proxies /api/* to the api service.
+
+# ---- builder ----
+FROM node:22-alpine AS builder
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+COPY astro-app/package.json ./astro-app/
+RUN npm install --no-audit --no-fund
+
+COPY astro-app ./astro-app
+RUN npm --workspace astro-app run build
+
+# ---- runtime ----
+FROM caddy:2-alpine
+
+COPY --from=builder /app/astro-app/dist /srv/web
+COPY Caddyfile /etc/caddy/Caddyfile
+
+EXPOSE 80

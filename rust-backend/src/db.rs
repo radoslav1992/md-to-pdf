@@ -1,14 +1,31 @@
-use serde::Serialize;
-use worker::{D1Database, Env};
+use serde::{Deserialize, Serialize};
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::{FromRow, SqlitePool};
+use std::str::FromStr;
 
-use crate::error::ConvertError;
-
-pub fn d1(env: &Env) -> Result<D1Database, ConvertError> {
-    env.d1("DB")
-        .map_err(|e| ConvertError::Internal(format!("D1 binding `DB` missing: {e}")))
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: SqlitePool,
+    pub admin_emails: Vec<String>,
+    pub cookie_secure: bool,
+    pub chromium_bin: String,
 }
 
-#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub async fn connect(url: &str) -> Result<SqlitePool, sqlx::Error> {
+    let opts = SqliteConnectOptions::from_str(url)?
+        .create_if_missing(true)
+        .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+        .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
+        .foreign_keys(true)
+        .busy_timeout(std::time::Duration::from_secs(5));
+
+    SqlitePoolOptions::new()
+        .max_connections(8)
+        .connect_with(opts)
+        .await
+}
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct User {
     pub id: i64,
     pub email: String,
@@ -47,7 +64,7 @@ pub struct PublicUser {
     pub created_at: i64,
 }
 
-#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, FromRow, Serialize)]
 pub struct Document {
     pub id: i64,
     pub user_id: i64,
@@ -81,4 +98,12 @@ impl From<&Document> for DocumentSummary {
             updated_at: d.updated_at,
         }
     }
+}
+
+pub fn now_seconds() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }

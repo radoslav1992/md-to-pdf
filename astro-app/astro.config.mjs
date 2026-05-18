@@ -1,16 +1,11 @@
 import { defineConfig } from 'astro/config';
-import cloudflare from '@astrojs/cloudflare';
 import react from '@astrojs/react';
 import tailwind from '@astrojs/tailwind';
 
-// https://astro.build/config
+// Static site — built into ./dist and served by Caddy alongside the Rust API.
+// All dynamic data is fetched client-side from /api/*, so no SSR is needed.
 export default defineConfig({
-  output: 'server',
-  adapter: cloudflare({
-    platformProxy: {
-      enabled: true,
-    },
-  }),
+  output: 'static',
   integrations: [
     react(),
     tailwind({
@@ -18,16 +13,11 @@ export default defineConfig({
     }),
   ],
   vite: {
-    ssr: {
-      noExternal: ['react', 'react-dom'],
-    },
     server: {
-      // In local development, proxy /api/* to the Rust worker started by
-      // `wrangler dev` in rust-backend/. In production both are served from
-      // the same hostname via Cloudflare routes, so no proxy is needed.
+      // Dev-time proxy: forwards /api/* to the local axum server on :8000.
       proxy: {
         '/api': {
-          target: 'http://127.0.0.1:8787',
+          target: 'http://127.0.0.1:8000',
           changeOrigin: true,
         },
       },
