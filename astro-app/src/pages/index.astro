@@ -1,73 +1,92 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import ConverterEditor from '../components/ConverterEditor.tsx';
+import Feature from '../components/Feature.astro';
 ---
 
-<BaseLayout title="Universal Document Converter — Markdown to PDF, free at the edge">
-  <section class="max-w-6xl mx-auto px-4 py-16 md:py-20">
-    <div class="text-center max-w-3xl mx-auto">
-      <span class="inline-block bg-brand-50 text-brand-700 text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wide">
-        Free for everyone · Rust on Cloudflare
-      </span>
-      <h1 class="text-4xl md:text-6xl font-bold tracking-tight mt-4 text-slate-900">
-        Markdown to PDF. <span class="text-brand-600">No sign-up required.</span>
-      </h1>
-      <p class="mt-6 text-lg text-slate-600">
-        Try the converter below — paste Markdown, render to PDF, download it. Create a free account
-        to save your documents, and upgrade to premium for HTML, JSON, and XML inputs.
-      </p>
+<BaseLayout title="Universal Document Converter — Markdown, HTML, CSV, and more to beautiful PDFs">
+  <section class="relative overflow-hidden">
+    <div class="absolute inset-0 bg-hero-warm pointer-events-none"></div>
+    <div class="relative max-w-6xl mx-auto px-4 pt-16 md:pt-24 pb-10">
+      <div class="text-center max-w-3xl mx-auto">
+        <span class="inline-flex items-center gap-2 bg-white border border-stone-200/80 text-stone-700 text-xs font-medium px-3 py-1.5 rounded-full shadow-soft">
+          <span class="inline-flex w-1.5 h-1.5 rounded-full bg-success-500 animate-pulse"></span>
+          Self-hosted · No tracking · Free for everyone
+        </span>
+        <h1 class="text-5xl md:text-7xl font-bold tracking-tight mt-6 text-stone-900 leading-[1.05]">
+          Documents that
+          <span class="bg-gradient-to-br from-brand-600 via-brand-500 to-peach-500 bg-clip-text text-transparent">spark joy.</span>
+        </h1>
+        <p class="mt-6 text-lg md:text-xl text-stone-600 leading-relaxed">
+          Convert Markdown, HTML, CSV, LaTeX and 5 more formats into clean PDFs.
+          Save your work, pick a theme, automate with API keys — all from one tidy workspace.
+        </p>
+        <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <a href="#try" class="btn-primary text-base px-5 py-2.5">Try the editor ↓</a>
+          <a href="/signup" class="btn-secondary text-base px-5 py-2.5">Create free account</a>
+        </div>
+      </div>
     </div>
   </section>
 
-  <section class="max-w-6xl mx-auto px-4 pb-10">
-    <div class="border border-slate-200 rounded-2xl p-4 md:p-6 bg-slate-50/40">
+  <section id="try" class="max-w-6xl mx-auto px-4 pb-12 -mt-2">
+    <div class="card p-4 md:p-6">
       <ConverterEditor anonymousMode={true} client:load />
     </div>
   </section>
 
   <section class="max-w-6xl mx-auto px-4 py-16">
-    <h2 class="text-2xl font-bold text-slate-900 text-center">Plans</h2>
-    <div class="mt-8 grid md:grid-cols-3 gap-6">
-      <div class="border border-slate-200 rounded-xl p-6">
-        <h3 class="text-lg font-semibold text-slate-900">Anonymous</h3>
-        <p class="mt-1 text-sm text-slate-500">No account needed.</p>
-        <ul class="mt-4 space-y-2 text-sm text-slate-700">
-          <li>✓ Markdown → HTML / PDF</li>
-          <li>✓ 256 KB payloads</li>
-          <li>✗ Cannot save documents</li>
-        </ul>
-        <a
-          href="#"
-          class="mt-6 inline-block text-sm text-brand-600 hover:text-brand-700"
-          >You're using this right now ↑</a>
-      </div>
-      <div class="border border-slate-200 rounded-xl p-6">
-        <h3 class="text-lg font-semibold text-slate-900">Free account</h3>
-        <p class="mt-1 text-sm text-slate-500">Everything above, plus:</p>
-        <ul class="mt-4 space-y-2 text-sm text-slate-700">
-          <li>✓ Save documents to your dashboard</li>
-          <li>✓ Re-render anytime</li>
-        </ul>
-        <a
-          href="/signup"
-          class="mt-6 inline-block bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-md transition"
-          >Create a free account</a>
-      </div>
-      <div class="border-2 border-brand-500 rounded-xl p-6 bg-brand-50/30 relative">
-        <span class="absolute -top-3 right-4 bg-brand-600 text-white text-[10px] uppercase tracking-wide font-semibold px-2 py-0.5 rounded">
-          Premium
-        </span>
-        <h3 class="text-lg font-semibold text-slate-900">Premium</h3>
-        <p class="mt-1 text-sm text-slate-500">For power users.</p>
-        <ul class="mt-4 space-y-2 text-sm text-slate-700">
-          <li>✓ HTML, JSON, XML inputs</li>
-          <li>✓ 4 MB payloads (16× larger)</li>
-          <li>✓ Save any input type</li>
-        </ul>
-        <p class="mt-6 text-xs text-slate-500">
-          Subscriptions are coming soon. See our <a href="/pricing" class="text-brand-600 hover:underline">pricing page</a> for details.
-          In the meantime, an admin can grant premium manually — email <a href="mailto:admin@example.com" class="text-brand-600">admin@example.com</a>.
-        </p>
+    <div class="text-center max-w-2xl mx-auto mb-10">
+      <span class="pill-brand">Why people upgrade</span>
+      <h2 class="mt-3 text-3xl md:text-4xl font-bold text-stone-900">Everything you need, none of the bloat</h2>
+      <p class="mt-3 text-stone-600">Built around the conversions you actually do, with small delights along the way.</p>
+    </div>
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <Feature
+        emoji="📥"
+        title="9 input formats"
+        body="Markdown, HTML, JSON, XML, CSV, Org, AsciiDoc, RST, LaTeX — all into HTML or PDF."
+      />
+      <Feature
+        emoji="🎨"
+        title="6 themes + custom CSS"
+        body="From academic papers to slick resumes. Build reusable templates for recurring documents."
+      />
+      <Feature
+        emoji="📐"
+        title="Full PDF page setup"
+        body="Page size, orientation, margins, page numbers, cover pages, headers and footers."
+      />
+      <Feature
+        emoji="✨"
+        title="TOC, math, syntax highlighting"
+        body="Auto table of contents, LaTeX math → MathML, server-side syntect colors — premium opt-ins."
+      />
+      <Feature
+        emoji="⚡"
+        title="API keys + batch + webhooks"
+        body="10,000 conversions/month. Signed HMAC webhooks. Background jobs for 50-doc batches."
+      />
+      <Feature
+        emoji="🔐"
+        title="Encrypted at rest"
+        body="AES-256-GCM under a key only you know. Version history. Password-protected share links."
+      />
+    </div>
+  </section>
+
+  <section class="max-w-6xl mx-auto px-4 py-12">
+    <div class="card bg-gradient-to-br from-brand-600 to-brand-800 text-white p-8 md:p-12 text-center shadow-glow border-0">
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight">Ready to upgrade your document workflow?</h2>
+      <p class="mt-3 text-brand-100 max-w-2xl mx-auto">
+        Start free, save documents to your dashboard, and pick up premium when you need
+        templates, API access, or background jobs.
+      </p>
+      <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+        <a href="/signup" class="btn-peach text-base px-5 py-2.5">Create a free account</a>
+        <a href="/pricing" class="text-white/90 hover:text-white underline-offset-4 hover:underline px-3 py-2">
+          See full pricing →
+        </a>
       </div>
     </div>
   </section>

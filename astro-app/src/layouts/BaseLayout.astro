@@ -7,7 +7,21 @@ interface Props {
   description?: string;
 }
 
-const { title, description = 'Convert Markdown, HTML, JSON, and XML into clean documents — at the edge.' } = Astro.props;
+const {
+  title,
+  description = 'Convert Markdown, HTML, JSON, CSV and more into beautifully styled documents — self-hosted, fast, joyful.',
+} = Astro.props;
+
+const pathname = Astro.url.pathname.replace(/\/$/, '') || '/';
+function isActive(href: string) {
+  if (href === '/') return pathname === '/';
+  return pathname === href || pathname.startsWith(href + '/');
+}
+const marketingLinks = [
+  { href: '/editor', label: 'Editor' },
+  { href: '/pricing', label: 'Pricing' },
+  { href: '/blog', label: 'Blog' },
+];
 ---
 
 <!doctype html>
@@ -16,22 +30,39 @@ const { title, description = 'Convert Markdown, HTML, JSON, and XML into clean d
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
+    <meta name="theme-color" content="#fffbf3" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>{title}</title>
   </head>
-  <body class="min-h-screen bg-white text-slate-900 flex flex-col">
-    <header class="border-b border-slate-200 bg-white/80 backdrop-blur sticky top-0 z-40">
-      <nav class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-        <div class="flex items-center gap-6">
-          <a href="/" class="font-semibold text-lg text-brand-700">Universal Converter</a>
-          <ul class="hidden md:flex items-center gap-5 text-sm text-slate-700">
-            <li><a href="/editor" class="hover:text-brand-600">Editor</a></li>
-            <li><a href="/pricing" class="hover:text-brand-600">Pricing</a></li>
-            <li><a href="/blog" class="hover:text-brand-600">Blog</a></li>
-            <li><a href="/legal" class="hover:text-brand-600">Legal</a></li>
-          </ul>
-        </div>
-        <NavBar client:load />
+  <body class="min-h-screen bg-cream-50 text-stone-900 flex flex-col antialiased">
+    <header class="sticky top-0 z-40 bg-cream-50/85 backdrop-blur-md border-b border-stone-200/70">
+      <nav class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+        <a href="/" class="flex items-center gap-2 font-semibold text-base text-stone-900 hover:text-brand-700 transition">
+          <span class="inline-flex w-8 h-8 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-glow text-sm font-bold">U</span>
+          <span class="hidden sm:inline">Universal Converter</span>
+        </a>
+
+        <ul class="hidden md:flex items-center gap-1 ml-4 text-sm">
+          {marketingLinks.map((l) => (
+            <li>
+              <a
+                href={l.href}
+                class:list={[
+                  'px-3 py-1.5 rounded-lg transition',
+                  isActive(l.href)
+                    ? 'text-brand-700 bg-brand-100/70 font-medium'
+                    : 'text-stone-600 hover:text-brand-700 hover:bg-stone-100',
+                ]}
+              >
+                {l.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+
+        <div class="flex-1"></div>
+
+        <NavBar client:load currentPath={pathname} />
       </nav>
     </header>
 
@@ -39,13 +70,38 @@ const { title, description = 'Convert Markdown, HTML, JSON, and XML into clean d
       <slot />
     </main>
 
-    <footer class="border-t border-slate-200 py-8 mt-12">
-      <div class="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between text-sm text-slate-500">
-        <p>&copy; {new Date().getFullYear()} Universal Document Converter</p>
-        <ul class="flex gap-4 mt-2 sm:mt-0">
-          <li><a href="/legal/terms" class="hover:text-brand-600">Terms</a></li>
-          <li><a href="/legal/privacy" class="hover:text-brand-600">Privacy</a></li>
-        </ul>
+    <footer class="border-t border-stone-200/70 mt-16 bg-cream-50/60">
+      <div class="max-w-6xl mx-auto px-4 py-10 grid md:grid-cols-3 gap-8 text-sm">
+        <div>
+          <div class="flex items-center gap-2 font-semibold text-stone-900">
+            <span class="inline-flex w-7 h-7 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 text-white text-xs font-bold">U</span>
+            Universal Converter
+          </div>
+          <p class="mt-3 text-stone-600 max-w-xs leading-relaxed">
+            Self-hosted document conversion that's quick to use and joyful to look at.
+          </p>
+        </div>
+        <div>
+          <h4 class="text-xs uppercase tracking-wider font-semibold text-stone-500 mb-3">Product</h4>
+          <ul class="space-y-2 text-stone-700">
+            <li><a href="/editor" class="hover:text-brand-700 transition">Editor</a></li>
+            <li><a href="/pricing" class="hover:text-brand-700 transition">Pricing</a></li>
+            <li><a href="/blog" class="hover:text-brand-700 transition">Blog</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="text-xs uppercase tracking-wider font-semibold text-stone-500 mb-3">Legal</h4>
+          <ul class="space-y-2 text-stone-700">
+            <li><a href="/legal/terms" class="hover:text-brand-700 transition">Terms</a></li>
+            <li><a href="/legal/privacy" class="hover:text-brand-700 transition">Privacy</a></li>
+            <li><a href="/legal" class="hover:text-brand-700 transition">All legal</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="border-t border-stone-200/70">
+        <p class="max-w-6xl mx-auto px-4 py-4 text-xs text-stone-500">
+          &copy; {new Date().getFullYear()} Universal Document Converter
+        </p>
       </div>
     </footer>
   </body>

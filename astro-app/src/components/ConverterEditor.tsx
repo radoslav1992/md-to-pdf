@@ -300,16 +300,16 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Document title"
-            className="flex-1 min-w-[180px] border border-slate-300 rounded-md px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+            className="flex-1 min-w-[180px] border border-stone-300 rounded-md px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <label className="text-sm font-medium text-slate-700">Input</label>
+          <label className="text-sm font-medium text-stone-700">Input</label>
           <select
             value={inputType}
             onChange={(e) => onTypeChange(e.target.value as InputType)}
-            className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+            className="border border-stone-300 rounded-md px-2 py-1 text-sm bg-white"
           >
             <option value="markdown">Markdown</option>
             {!anonymousMode && (
@@ -326,11 +326,11 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
             )}
           </select>
 
-          <label className="text-sm font-medium text-slate-700 ml-4">Output</label>
+          <label className="text-sm font-medium text-stone-700 ml-4">Output</label>
           <select
             value={outputType}
             onChange={(e) => setOutputType(e.target.value as OutputType)}
-            className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+            className="border border-stone-300 rounded-md px-2 py-1 text-sm bg-white"
           >
             <option value="html">HTML</option>
             <option value="pdf">PDF</option>
@@ -343,7 +343,7 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                 onClick={save}
                 disabled={saving || !result}
                 title={isAuthed ? 'Save to your dashboard' : 'Log in to save'}
-                className="border border-slate-300 hover:border-brand-500 disabled:opacity-50 text-slate-700 hover:text-brand-700 font-medium px-4 py-1.5 rounded-md text-sm transition"
+                className="border border-stone-300 hover:border-brand-500 disabled:opacity-50 text-stone-700 hover:text-brand-700 font-medium px-4 py-1.5 rounded-md text-sm transition"
               >
                 {saving ? 'Saving…' : isAuthed ? 'Save' : 'Log in to save'}
               </button>
@@ -352,7 +352,7 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
               type="button"
               onClick={convert}
               disabled={loading || showPremiumLock}
-              className="bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 text-white font-medium px-4 py-1.5 rounded-md text-sm transition"
+              className="bg-brand-600 hover:bg-brand-700 disabled:bg-stone-300 text-white font-medium px-4 py-1.5 rounded-md text-sm transition"
             >
               {loading ? 'Converting…' : 'Convert'}
             </button>
@@ -360,7 +360,7 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
         </div>
 
         {showPremiumLock && (
-          <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+          <div className="text-xs text-warn-800 bg-warn-50 border border-warn-100 rounded px-3 py-2">
             HTML, JSON, XML, CSV, Org, AsciiDoc, RST and LaTeX inputs require a premium account.
             Markdown remains free for everyone.
           </div>
@@ -369,18 +369,18 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
         <details
           open={stylePanelOpen}
           onToggle={(e) => setStylePanelOpen((e.target as HTMLDetailsElement).open)}
-          className="border border-slate-200 rounded-lg bg-slate-50/50"
+          className="border border-stone-200 rounded-lg bg-stone-50/50"
         >
-          <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-slate-700 select-none">
+          <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-stone-700 select-none">
             Styling & page setup {isPremium ? '' : '· Premium'}
           </summary>
-          <div className={`p-3 border-t border-slate-200 ${isPremium ? '' : 'opacity-60 pointer-events-none'}`}>
+          <div className={`p-3 border-t border-stone-200 ${isPremium ? '' : 'opacity-60 pointer-events-none'}`}>
             <div className="flex flex-wrap items-center gap-3">
-              <label className="text-xs font-medium text-slate-700">Theme</label>
+              <label className="text-xs font-medium text-stone-700">Theme</label>
               <select
                 value={theme}
                 onChange={(e) => setTheme(e.target.value)}
-                className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                className="border border-stone-300 rounded-md px-2 py-1 text-sm bg-white"
               >
                 {THEMES.map((t) => (
                   <option key={t.value} value={t.value}>
@@ -390,13 +390,13 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
               </select>
               {templates.length > 0 && (
                 <>
-                  <label className="text-xs font-medium text-slate-700 ml-4">Template</label>
+                  <label className="text-xs font-medium text-stone-700 ml-4">Template</label>
                   <select
                     value={templateId ?? ''}
                     onChange={(e) =>
                       setTemplateId(e.target.value ? parseInt(e.target.value, 10) : null)
                     }
-                    className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                    className="border border-stone-300 rounded-md px-2 py-1 text-sm bg-white"
                   >
                     <option value="">— none —</option>
                     {templates.map((t) => (
@@ -423,7 +423,7 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
               )}
             </div>
 
-            <div className="mt-3 flex flex-wrap gap-4 text-sm text-slate-700">
+            <div className="mt-3 flex flex-wrap gap-4 text-sm text-stone-700">
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -459,13 +459,13 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
             {outputType === 'pdf' && (
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-slate-700 block mb-1">Page size</label>
+                  <label className="text-xs font-medium text-stone-700 block mb-1">Page size</label>
                   <select
                     value={pdfOptions.page_size ?? 'A4'}
                     onChange={(e) =>
                       setPdfOptions({ ...pdfOptions, page_size: e.target.value })
                     }
-                    className="w-full border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                    className="w-full border border-stone-300 rounded-md px-2 py-1 text-sm bg-white"
                   >
                     <option value="A4">A4</option>
                     <option value="A3">A3</option>
@@ -476,7 +476,7 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-slate-700 block mb-1">Orientation</label>
+                  <label className="text-xs font-medium text-stone-700 block mb-1">Orientation</label>
                   <select
                     value={pdfOptions.orientation ?? 'portrait'}
                     onChange={(e) =>
@@ -485,14 +485,14 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                         orientation: e.target.value as 'portrait' | 'landscape',
                       })
                     }
-                    className="w-full border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                    className="w-full border border-stone-300 rounded-md px-2 py-1 text-sm bg-white"
                   >
                     <option value="portrait">Portrait</option>
                     <option value="landscape">Landscape</option>
                   </select>
                 </div>
                 <div className="col-span-2">
-                  <label className="text-xs font-medium text-slate-700 block mb-1">
+                  <label className="text-xs font-medium text-stone-700 block mb-1">
                     Margins (top / right / bottom / left)
                   </label>
                   <div className="grid grid-cols-4 gap-2">
@@ -508,12 +508,12 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                             margin: { ...pdfOptions.margin, [side]: e.target.value || undefined },
                           })
                         }
-                        className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                        className="border border-stone-300 rounded-md px-2 py-1 text-sm bg-white"
                       />
                     ))}
                   </div>
                 </div>
-                <label className="col-span-2 flex items-center gap-2 text-sm text-slate-700">
+                <label className="col-span-2 flex items-center gap-2 text-sm text-stone-700">
                   <input
                     type="checkbox"
                     checked={pdfOptions.page_numbers ?? false}
@@ -522,7 +522,7 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                   Page numbers (Chromium footer)
                 </label>
                 <div className="col-span-2">
-                  <label className="text-xs font-medium text-slate-700 block mb-1">
+                  <label className="text-xs font-medium text-stone-700 block mb-1">
                     Header HTML (appears on every page)
                   </label>
                   <input
@@ -532,11 +532,11 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                     onChange={(e) =>
                       setPdfOptions({ ...pdfOptions, header_template: e.target.value })
                     }
-                    className="w-full border border-slate-300 rounded-md px-2 py-1 text-sm bg-white font-mono"
+                    className="w-full border border-stone-300 rounded-md px-2 py-1 text-sm bg-white font-mono"
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="text-xs font-medium text-slate-700 block mb-1">
+                  <label className="text-xs font-medium text-stone-700 block mb-1">
                     Footer HTML (appears on every page)
                   </label>
                   <input
@@ -546,11 +546,11 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                     onChange={(e) =>
                       setPdfOptions({ ...pdfOptions, footer_template: e.target.value })
                     }
-                    className="w-full border border-slate-300 rounded-md px-2 py-1 text-sm bg-white font-mono"
+                    className="w-full border border-stone-300 rounded-md px-2 py-1 text-sm bg-white font-mono"
                   />
                 </div>
-                <fieldset className="col-span-2 border border-slate-200 rounded-md p-2 mt-1">
-                  <legend className="text-xs font-medium text-slate-700 px-1">Cover page</legend>
+                <fieldset className="col-span-2 border border-stone-200 rounded-md p-2 mt-1">
+                  <legend className="text-xs font-medium text-stone-700 px-1">Cover page</legend>
                   <div className="grid grid-cols-2 gap-2">
                     <input
                       type="text"
@@ -562,7 +562,7 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                           cover: { ...pdfOptions.cover, title: e.target.value },
                         })
                       }
-                      className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                      className="border border-stone-300 rounded-md px-2 py-1 text-sm bg-white"
                     />
                     <input
                       type="text"
@@ -574,7 +574,7 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                           cover: { ...pdfOptions.cover, subtitle: e.target.value },
                         })
                       }
-                      className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                      className="border border-stone-300 rounded-md px-2 py-1 text-sm bg-white"
                     />
                     <input
                       type="text"
@@ -586,7 +586,7 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                           cover: { ...pdfOptions.cover, author: e.target.value },
                         })
                       }
-                      className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                      className="border border-stone-300 rounded-md px-2 py-1 text-sm bg-white"
                     />
                     <input
                       type="text"
@@ -598,7 +598,7 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                           cover: { ...pdfOptions.cover, date: e.target.value },
                         })
                       }
-                      className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                      className="border border-stone-300 rounded-md px-2 py-1 text-sm bg-white"
                     />
                   </div>
                 </fieldset>
@@ -606,18 +606,18 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
             )}
 
             <div className="mt-3">
-              <label className="text-xs font-medium text-slate-700 block mb-1">Custom CSS</label>
+              <label className="text-xs font-medium text-stone-700 block mb-1">Custom CSS</label>
               <textarea
                 value={customCss}
                 onChange={(e) => setCustomCss(e.target.value)}
                 placeholder="body { font-family: 'My Font'; }"
                 spellCheck={false}
-                className="w-full h-24 font-mono text-xs border border-slate-300 rounded-md p-2 bg-white"
+                className="w-full h-24 font-mono text-xs border border-stone-300 rounded-md p-2 bg-white"
               />
             </div>
 
-            <div className="mt-3 border-t border-slate-200 pt-3">
-              <label className="flex items-center gap-2 text-sm text-slate-700">
+            <div className="mt-3 border-t border-stone-200 pt-3">
+              <label className="flex items-center gap-2 text-sm text-stone-700">
                 <input
                   type="checkbox"
                   checked={encryptEnabled}
@@ -631,11 +631,11 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                   value={encryptPassword}
                   onChange={(e) => setEncryptPassword(e.target.value)}
                   placeholder="Document password (8+ chars) — store this safely; we can't recover it"
-                  className="mt-2 w-full border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                  className="mt-2 w-full border border-stone-300 rounded-md px-2 py-1 text-sm bg-white"
                 />
               )}
               {encryptEnabled && encryptPassword.length > 0 && encryptPassword.length < 8 && (
-                <p className="mt-1 text-xs text-amber-700">Password must be at least 8 characters.</p>
+                <p className="mt-1 text-xs text-warn-700">Password must be at least 8 characters.</p>
               )}
             </div>
           </div>
@@ -645,23 +645,23 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
           value={content}
           onChange={(e) => setContent(e.target.value)}
           spellCheck={false}
-          className="w-full h-[460px] font-mono text-sm border border-slate-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          className="w-full h-[460px] font-mono text-sm border border-stone-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-brand-500"
         />
       </div>
 
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-700">Preview</h2>
+          <h2 className="text-sm font-semibold text-stone-700">Preview</h2>
           {result?.warnings && result.warnings.length > 0 && (
-            <span className="text-xs text-amber-600">{result.warnings.length} warning(s)</span>
+            <span className="text-xs text-warn-600">{result.warnings.length} warning(s)</span>
           )}
         </div>
-        <div className="border border-slate-300 rounded-lg h-[460px] bg-white overflow-hidden">
+        <div className="border border-stone-300 rounded-lg h-[460px] bg-white overflow-hidden">
           {error && (
-            <div className="p-4 text-sm text-red-700 bg-red-50 border-b border-red-200">{error}</div>
+            <div className="p-4 text-sm text-danger-700 bg-danger-50 border-b border-danger-100">{error}</div>
           )}
           {info && !error && (
-            <div className="p-4 text-sm text-emerald-700 bg-emerald-50 border-b border-emerald-200">{info}</div>
+            <div className="p-4 text-sm text-success-700 bg-success-50 border-b border-success-100">{info}</div>
           )}
           {pdfDataUrl ? (
             <iframe title="PDF preview" src={pdfDataUrl} className="w-full h-full bg-white" />
@@ -673,13 +673,13 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
               sandbox="allow-same-origin"
             />
           ) : (
-            <div className="p-4 text-sm text-slate-500">
+            <div className="p-4 text-sm text-stone-500">
               The converted output will appear here. Press <strong>Convert</strong> to run the request.
             </div>
           )}
         </div>
         {result && (
-          <div className="flex items-center justify-between text-xs text-slate-500">
+          <div className="flex items-center justify-between text-xs text-stone-500">
             <span>{result.output_type === 'pdf' ? 'PDF ready' : 'HTML ready'}</span>
             {pdfDataUrl && (
               <a

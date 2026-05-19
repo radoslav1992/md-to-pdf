@@ -104,25 +104,25 @@ export default function DocumentSidebar({ documentId, isPremium, onRestored }: P
   return (
     <div className="space-y-4">
       {error && (
-        <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+        <div className="text-xs text-danger-700 bg-danger-50 border border-danger-100 rounded px-3 py-2">
           {error}
         </div>
       )}
       {info && !error && (
-        <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
+        <div className="text-xs text-success-700 bg-success-50 border border-success-100 rounded px-3 py-2">
           {info}
         </div>
       )}
 
-      <details open className="border border-slate-200 rounded-lg bg-white">
-        <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-slate-700 select-none">
+      <details open className="border border-stone-200 rounded-lg bg-white">
+        <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-stone-700 select-none">
           Version history {versions ? `(${versions.length})` : ''}
         </summary>
-        <div className="p-3 border-t border-slate-200">
+        <div className="p-3 border-t border-stone-200">
           {versions === null ? (
-            <p className="text-xs text-slate-500">Loading…</p>
+            <p className="text-xs text-stone-500">Loading…</p>
           ) : versions.length === 0 ? (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-stone-500">
               No prior versions yet. Each update snapshots the previous state here.
             </p>
           ) : (
@@ -131,10 +131,10 @@ export default function DocumentSidebar({ documentId, isPremium, onRestored }: P
                 <li key={v.id} className="flex items-center justify-between gap-2 text-xs">
                   <div>
                     <span className="font-mono">v{v.version}</span>
-                    <span className="ml-2 text-slate-500">
+                    <span className="ml-2 text-stone-500">
                       {new Date(v.created_at * 1000).toLocaleString()}
                     </span>
-                    <span className="ml-2 text-slate-400">({v.content_bytes} bytes)</span>
+                    <span className="ml-2 text-stone-400">({v.content_bytes} bytes)</span>
                   </div>
                   <button
                     type="button"
@@ -150,16 +150,16 @@ export default function DocumentSidebar({ documentId, isPremium, onRestored }: P
         </div>
       </details>
 
-      <details className="border border-slate-200 rounded-lg bg-white">
-        <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-slate-700 select-none">
+      <details className="border border-stone-200 rounded-lg bg-white">
+        <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-stone-700 select-none">
           Share links {shares ? `(${shares.length})` : ''} {isPremium ? '' : '· Premium'}
         </summary>
-        <div className={`p-3 border-t border-slate-200 ${isPremium ? '' : 'opacity-60 pointer-events-none'}`}>
+        <div className={`p-3 border-t border-stone-200 ${isPremium ? '' : 'opacity-60 pointer-events-none'}`}>
           <div className="grid grid-cols-2 gap-2">
             <select
               value={shareFormat}
               onChange={(e) => setShareFormat(e.target.value as 'html' | 'pdf')}
-              className="border border-slate-300 rounded-md px-2 py-1 text-xs bg-white"
+              className="border border-stone-300 rounded-md px-2 py-1 text-xs bg-white"
             >
               <option value="html">HTML</option>
               <option value="pdf">PDF</option>
@@ -170,7 +170,7 @@ export default function DocumentSidebar({ documentId, isPremium, onRestored }: P
               value={shareExpiresDays}
               onChange={(e) => setShareExpiresDays(e.target.value)}
               placeholder="Expires (days)"
-              className="border border-slate-300 rounded-md px-2 py-1 text-xs bg-white"
+              className="border border-stone-300 rounded-md px-2 py-1 text-xs bg-white"
             />
           </div>
           <input
@@ -178,7 +178,7 @@ export default function DocumentSidebar({ documentId, isPremium, onRestored }: P
             value={sharePassword}
             onChange={(e) => setSharePassword(e.target.value)}
             placeholder="Password (optional)"
-            className="mt-2 w-full border border-slate-300 rounded-md px-2 py-1 text-xs bg-white"
+            className="mt-2 w-full border border-stone-300 rounded-md px-2 py-1 text-xs bg-white"
           />
           <button
             type="button"
@@ -189,8 +189,8 @@ export default function DocumentSidebar({ documentId, isPremium, onRestored }: P
           </button>
 
           {newShare && (
-            <div className="mt-3 bg-amber-50 border border-amber-200 rounded p-2">
-              <p className="text-xs text-amber-900 font-medium">Link created — copy it now</p>
+            <div className="mt-3 bg-warn-50 border border-warn-100 rounded p-2">
+              <p className="text-xs text-warn-800 font-medium">Link created — copy it now</p>
               <code className="block mt-1 text-xs font-mono break-all">{newShare.url}</code>
             </div>
           )}
@@ -201,10 +201,10 @@ export default function DocumentSidebar({ documentId, isPremium, onRestored }: P
                 <li key={s.id} className="flex items-center justify-between gap-2 text-xs">
                   <div>
                     <span className="font-mono">{s.prefix}…</span>
-                    <span className="ml-2 text-slate-500">{s.format}</span>
-                    <span className="ml-2 text-slate-400">{s.view_count} views</span>
+                    <span className="ml-2 text-stone-500">{s.format}</span>
+                    <span className="ml-2 text-stone-400">{s.view_count} views</span>
                     {s.expires_at && (
-                      <span className="ml-2 text-slate-400">
+                      <span className="ml-2 text-stone-400">
                         exp {new Date(s.expires_at * 1000).toLocaleDateString()}
                       </span>
                     )}
@@ -212,7 +212,7 @@ export default function DocumentSidebar({ documentId, isPremium, onRestored }: P
                   <button
                     type="button"
                     onClick={() => void onRevokeShare(s.id)}
-                    className="text-red-600 hover:text-red-700"
+                    className="text-danger-600 hover:text-danger-700"
                   >
                     Revoke
                   </button>

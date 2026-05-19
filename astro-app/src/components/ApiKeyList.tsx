@@ -56,53 +56,53 @@ export default function ApiKeyList() {
   return (
     <div className="space-y-6">
       {usage && (
-        <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
+        <div className="border border-stone-200 rounded-lg p-4 bg-stone-50">
           <div className="flex items-baseline justify-between">
-            <h3 className="text-sm font-semibold text-slate-700">Conversions this period</h3>
-            <span className="text-sm text-slate-600">
+            <h3 className="text-sm font-semibold text-stone-700">Conversions this period</h3>
+            <span className="text-sm text-stone-600">
               {usage.used.toLocaleString()} / {usage.limit.toLocaleString()}
             </span>
           </div>
-          <div className="mt-2 h-2 bg-white border border-slate-200 rounded overflow-hidden">
+          <div className="mt-2 h-2 bg-white border border-stone-200 rounded overflow-hidden">
             <div
-              className={`h-full ${usage.used / usage.limit > 0.8 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+              className={`h-full ${usage.used / usage.limit > 0.8 ? 'bg-warn-500' : 'bg-success-500'}`}
               style={{ width: `${Math.min(100, (usage.used / usage.limit) * 100)}%` }}
             />
           </div>
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-stone-500">
             Rolling 30-day window. Conversions via API keys count the same as in-app conversions.
           </p>
         </div>
       )}
 
       {revealed && (
-        <div className="border-2 border-amber-300 rounded-lg p-4 bg-amber-50">
+        <div className="border-2 border-warn-100 rounded-lg p-4 bg-warn-50">
           <div className="flex items-start justify-between">
             <div>
-              <h3 className="font-semibold text-amber-900">Your new key — copy it now</h3>
-              <p className="text-sm text-amber-800 mt-1">
+              <h3 className="font-semibold text-warn-800">Your new key — copy it now</h3>
+              <p className="text-sm text-warn-800 mt-1">
                 This is the only time we'll show "{revealed.name}" in full. Store it somewhere safe.
               </p>
             </div>
             <button
               type="button"
               onClick={() => setRevealed(null)}
-              className="text-amber-700 hover:text-amber-900 text-sm"
+              className="text-warn-700 hover:text-warn-800 text-sm"
             >
               Dismiss
             </button>
           </div>
-          <code className="mt-3 block bg-white border border-amber-200 rounded p-3 text-sm font-mono break-all">
+          <code className="mt-3 block bg-white border border-warn-100 rounded p-3 text-sm font-mono break-all">
             {revealed.plaintext}
           </code>
         </div>
       )}
 
-      <div className="border border-slate-200 rounded-lg p-4 bg-white">
-        <h3 className="font-semibold text-slate-800">Create an API key</h3>
-        <p className="text-xs text-slate-500 mt-1">
+      <div className="border border-stone-200 rounded-lg p-4 bg-white">
+        <h3 className="font-semibold text-stone-800">Create an API key</h3>
+        <p className="text-xs text-stone-500 mt-1">
           Use these for headless integrations: CI pipelines, scripts, third-party tools. Pass as{' '}
-          <code className="font-mono bg-slate-100 px-1 rounded">Authorization: Bearer &lt;key&gt;</code>.
+          <code className="font-mono bg-stone-100 px-1 rounded">Authorization: Bearer &lt;key&gt;</code>.
         </p>
         <div className="mt-3 flex gap-2">
           <input
@@ -110,7 +110,7 @@ export default function ApiKeyList() {
             placeholder="e.g. ci-pipeline, my-laptop"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="flex-1 border border-slate-300 rounded-md px-3 py-1.5 text-sm bg-white"
+            className="flex-1 border border-stone-300 rounded-md px-3 py-1.5 text-sm bg-white"
           />
           <button
             type="button"
@@ -124,27 +124,27 @@ export default function ApiKeyList() {
       </div>
 
       {error && (
-        <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+        <div className="text-sm text-danger-700 bg-danger-50 border border-danger-100 rounded px-3 py-2">
           {error}
         </div>
       )}
 
       <div>
-        <h3 className="font-semibold text-slate-800 mb-3">Active keys</h3>
+        <h3 className="font-semibold text-stone-800 mb-3">Active keys</h3>
         {items === null ? (
-          <p className="text-sm text-slate-500">Loading…</p>
+          <p className="text-sm text-stone-500">Loading…</p>
         ) : items.length === 0 ? (
-          <p className="text-sm text-slate-500">No keys yet.</p>
+          <p className="text-sm text-stone-500">No keys yet.</p>
         ) : (
           <ul className="space-y-2">
             {items.map((k) => (
               <li
                 key={k.id}
-                className="border border-slate-200 rounded-lg p-3 flex items-center justify-between"
+                className="border border-stone-200 rounded-lg p-3 flex items-center justify-between"
               >
                 <div>
-                  <div className="font-medium text-slate-900">{k.name}</div>
-                  <div className="text-xs text-slate-500 mt-0.5 font-mono">
+                  <div className="font-medium text-stone-900">{k.name}</div>
+                  <div className="text-xs text-stone-500 mt-0.5 font-mono">
                     {k.prefix}… · created {new Date(k.created_at * 1000).toLocaleDateString()}
                     {k.last_used_at
                       ? ` · last used ${new Date(k.last_used_at * 1000).toLocaleString()}`
@@ -154,7 +154,7 @@ export default function ApiKeyList() {
                 <button
                   type="button"
                   onClick={() => onRevoke(k.id)}
-                  className="text-xs text-red-600 hover:text-red-700"
+                  className="text-xs text-danger-600 hover:text-danger-700"
                 >
                   Revoke
                 </button>

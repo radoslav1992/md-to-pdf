@@ -7,16 +7,20 @@ import EditorWrapper from '../components/EditorWrapper.tsx';
   <section class="max-w-6xl mx-auto px-4 py-10">
     <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 class="text-3xl font-bold text-slate-900">Editor</h1>
-        <p class="mt-2 text-slate-600">
-          Convert and save documents. Markdown is free; HTML, JSON, and XML are unlocked with
-          a premium account.
+        <span class="pill-brand">Workspace</span>
+        <h1 class="mt-2 text-3xl font-bold tracking-tight text-stone-900">Editor</h1>
+        <p class="mt-2 text-stone-600 max-w-2xl">
+          Pick a format, paste your content, render to HTML or PDF.
+          Markdown is free for everyone — premium unlocks 8 more formats, themes, page setup,
+          and enrichments.
         </p>
       </div>
-      <a href="/dashboard" class="text-sm text-brand-600 hover:text-brand-700 underline">
+      <a href="/dashboard" class="link text-sm whitespace-nowrap">
         Your saved documents →
       </a>
     </div>
-    <EditorWrapper client:load />
+    <div class="card p-4 md:p-6">
+      <EditorWrapper client:load />
+    </div>
   </section>
 </BaseLayout>

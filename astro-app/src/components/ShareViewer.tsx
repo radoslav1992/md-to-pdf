@@ -72,7 +72,7 @@ function ShareViewerBody({ token, missing }: BodyProps) {
   if (missing) {
     return (
       <div className="max-w-xl mx-auto py-20 text-center">
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg">
+        <div className="bg-warn-50 border border-warn-100 text-warn-800 px-4 py-3 rounded-lg">
           Missing share token. Expected URL like <code>/s?t=&lt;token&gt;</code>.
         </div>
       </div>
@@ -82,7 +82,7 @@ function ShareViewerBody({ token, missing }: BodyProps) {
   if (error && !view) {
     return (
       <div className="max-w-xl mx-auto py-20 text-center">
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+        <div className="bg-danger-50 border border-danger-100 text-danger-700 px-4 py-3 rounded-lg">
           {error}
         </div>
       </div>
@@ -90,14 +90,14 @@ function ShareViewerBody({ token, missing }: BodyProps) {
   }
 
   if (requiresPassword === null) {
-    return <p className="text-center text-slate-500 py-20">Loading…</p>;
+    return <p className="text-center text-stone-500 py-20">Loading…</p>;
   }
 
   if (!view) {
     return (
       <div className="max-w-md mx-auto py-20">
-        <h2 className="text-lg font-semibold text-slate-900 mb-3">This share is password-protected</h2>
-        <p className="text-sm text-slate-600 mb-4">
+        <h2 className="text-lg font-semibold text-stone-900 mb-3">This share is password-protected</h2>
+        <p className="text-sm text-stone-600 mb-4">
           Enter the password the owner gave you.
         </p>
         <form
@@ -111,7 +111,7 @@ function ShareViewerBody({ token, missing }: BodyProps) {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="flex-1 border border-slate-300 rounded-md px-3 py-1.5 text-sm bg-white"
+            className="flex-1 border border-stone-300 rounded-md px-3 py-1.5 text-sm bg-white"
             placeholder="Password"
             autoFocus
           />
@@ -124,12 +124,12 @@ function ShareViewerBody({ token, missing }: BodyProps) {
           </button>
         </form>
         {error && (
-          <div className="mt-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+          <div className="mt-3 text-sm text-danger-700 bg-danger-50 border border-danger-100 rounded px-3 py-2">
             {error}
           </div>
         )}
         {expiresAt && (
-          <p className="mt-4 text-xs text-slate-500">
+          <p className="mt-4 text-xs text-stone-500">
             Expires {new Date(expiresAt * 1000).toLocaleString()}.
           </p>
         )}
@@ -140,9 +140,9 @@ function ShareViewerBody({ token, missing }: BodyProps) {
   return (
     <div className="max-w-5xl mx-auto py-6 px-4">
       <div className="mb-3 flex items-baseline justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">{view.title}</h1>
+        <h1 className="text-xl font-semibold text-stone-900">{view.title}</h1>
         {expiresAt && (
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-stone-500">
             expires {new Date(expiresAt * 1000).toLocaleString()}
           </span>
         )}
@@ -151,7 +151,7 @@ function ShareViewerBody({ token, missing }: BodyProps) {
         title={view.title}
         srcDoc={view.html}
         sandbox="allow-same-origin"
-        className="w-full h-[80vh] border border-slate-200 rounded-lg bg-white"
+        className="w-full h-[80vh] border border-stone-200 rounded-lg bg-white"
       />
     </div>
   );
