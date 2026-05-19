@@ -1,8 +1,9 @@
 use std::net::SocketAddr;
 
 use axum::body::Body;
-use axum::extract::{DefaultBodyLimit, Path, Query, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, Request, State};
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -31,6 +32,7 @@ mod jobs;
 mod pandoc;
 mod pdf;
 mod pdf_tools;
+mod rate_limit;
 mod render_cache;
 mod shares;
 mod templates;
@@ -39,6 +41,7 @@ mod usage;
 
 use crate::db::AppState;
 use crate::error::ConvertError;
+use crate::rate_limit::{Decision, Identity, RateLimiter, Tier};
 
 const BODY_LIMIT_BYTES: usize = 32 * 1024 * 1024; // 32 MiB — covers 16 MiB premium input plus JSON envelope
 
@@ -92,6 +95,11 @@ async fn main() -> anyhow::Result<()> {
         "chromium warm pool ready"
     );
 
+    let rate_limit_buckets: usize = std::env::var("RATE_LIMIT_MAX_BUCKETS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10_000);
+
     let state = AppState {
         pool,
         admin_emails,
@@ -101,6 +109,7 @@ async fn main() -> anyhow::Result<()> {
         render_cache: std::sync::Arc::new(std::sync::Mutex::new(
             render_cache::RenderCache::new(render_cache_max_bytes),
         )),
+        rate_limiter: std::sync::Arc::new(RateLimiter::new(rate_limit_buckets)),
     };
 
     // Spawn the background job worker. One worker is enough on the
@@ -113,82 +122,98 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // The API surface is defined once (with no `/api` prefix) and mounted
+    // at both `/api` (legacy) and `/api/v1` (versioned). Future breaking
+    // changes can land at `/api/v2` without disturbing existing clients.
     let app = Router::new()
-        .route("/api/health", get(health))
-        .route("/api/auth/signup", post(signup))
-        .route("/api/auth/login", post(login))
-        .route("/api/auth/logout", post(logout))
-        .route("/api/auth/me", get(me))
-        .route("/api/convert", post(convert_handler))
-        .route("/api/convert/batch", post(batch_handler))
-        .route("/api/documents", get(documents_list).post(documents_create))
+        .nest("/api", build_api_router(state.clone()))
+        .nest("/api/v1", build_api_router(state.clone()))
+        .fallback(not_found)
+        .layer(DefaultBodyLimit::max(BODY_LIMIT_BYTES))
+        .layer(CorsLayer::permissive())
+        .layer(TraceLayer::new_for_http());
+
+    let listener = tokio::net::TcpListener::bind(bind_addr).await?;
+    tracing::info!(addr = %bind_addr, "listening");
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
+    Ok(())
+}
+
+/// Build the routes that live under both `/api` and `/api/v1`. Defined
+/// once so the two mount points stay in lock-step automatically.
+fn build_api_router(state: AppState) -> Router {
+    Router::new()
+        .route("/health", get(health))
+        .route("/openapi.yaml", get(openapi_yaml))
+        .route("/openapi.json", get(openapi_json))
+        .route("/auth/signup", post(signup))
+        .route("/auth/login", post(login))
+        .route("/auth/logout", post(logout))
+        .route("/auth/me", get(me))
+        .route("/convert", post(convert_handler))
+        .route("/convert/batch", post(batch_handler))
+        .route("/documents", get(documents_list).post(documents_create))
         .route(
-            "/api/documents/{id}",
+            "/documents/{id}",
             get(documents_get)
                 .patch(documents_update)
                 .delete(documents_delete),
         )
+        .route("/templates", get(templates_list).post(templates_create))
         .route(
-            "/api/templates",
-            get(templates_list).post(templates_create),
-        )
-        .route(
-            "/api/templates/{id}",
+            "/templates/{id}",
             get(templates_get)
                 .patch(templates_update)
                 .delete(templates_delete),
         )
-        .route("/api/keys", get(keys_list).post(keys_create))
-        .route("/api/keys/{id}", axum::routing::delete(keys_revoke))
-        .route("/api/usage", get(usage_handler))
-        .route("/api/jobs", get(jobs_list))
-        .route("/api/jobs/convert", post(jobs_enqueue_convert))
-        .route("/api/jobs/batch", post(jobs_enqueue_batch))
-        .route("/api/jobs/{id}", get(jobs_get))
-        .route("/api/jobs/{id}/cancel", post(jobs_cancel))
+        .route("/keys", get(keys_list).post(keys_create))
+        .route("/keys/{id}", axum::routing::delete(keys_revoke))
+        .route("/usage", get(usage_handler))
+        .route("/jobs", get(jobs_list))
+        .route("/jobs/convert", post(jobs_enqueue_convert))
+        .route("/jobs/batch", post(jobs_enqueue_batch))
+        .route("/jobs/{id}", get(jobs_get))
+        .route("/jobs/{id}/cancel", post(jobs_cancel))
+        .route("/documents/{id}/versions", get(document_versions_list))
         .route(
-            "/api/documents/{id}/versions",
-            get(document_versions_list),
-        )
-        .route(
-            "/api/documents/{id}/versions/{vid}",
+            "/documents/{id}/versions/{vid}",
             get(document_versions_get),
         )
         .route(
-            "/api/documents/{id}/versions/{vid}/restore",
+            "/documents/{id}/versions/{vid}/restore",
             post(document_versions_restore),
         )
-        .route("/api/documents/{id}/decrypt", post(documents_decrypt))
+        .route("/documents/{id}/decrypt", post(documents_decrypt))
         .route(
-            "/api/documents/{id}/shares",
+            "/documents/{id}/shares",
             get(shares_list).post(shares_create),
         )
-        .route("/api/shares/{id}", axum::routing::delete(shares_revoke))
-        .route("/api/share/{token}", get(share_meta).post(share_view))
-        .route("/api/extract", post(extract_handler))
-        .route("/api/pdf/merge", post(pdf_merge_handler))
-        .route("/api/pdf/split", post(pdf_split_handler))
-        .route("/api/pdf/compress", post(pdf_compress_handler))
-        .route("/api/pdf/watermark", post(pdf_watermark_handler))
-        .route("/api/pdf/encrypt", post(pdf_encrypt_handler))
-        .route("/api/images", get(images_list).post(images_upload))
+        .route("/shares/{id}", axum::routing::delete(shares_revoke))
+        .route("/share/{token}", get(share_meta).post(share_view))
+        .route("/extract", post(extract_handler))
+        .route("/pdf/merge", post(pdf_merge_handler))
+        .route("/pdf/split", post(pdf_split_handler))
+        .route("/pdf/compress", post(pdf_compress_handler))
+        .route("/pdf/watermark", post(pdf_watermark_handler))
+        .route("/pdf/encrypt", post(pdf_encrypt_handler))
+        .route("/images", get(images_list).post(images_upload))
         .route(
-            "/api/images/{id}",
+            "/images/{id}",
             get(images_serve).delete(images_delete),
         )
-        .route("/api/admin/users", get(admin_users))
-        .route("/api/admin/users/{id}/role", post(admin_update_role))
-        .route("/api/admin/cache", get(admin_cache_stats))
-        .fallback(not_found)
-        .layer(DefaultBodyLimit::max(BODY_LIMIT_BYTES))
-        .layer(CorsLayer::permissive())
-        .layer(TraceLayer::new_for_http())
-        .with_state(state);
-
-    let listener = tokio::net::TcpListener::bind(bind_addr).await?;
-    tracing::info!(addr = %bind_addr, "listening");
-    axum::serve(listener, app).await?;
-    Ok(())
+        .route("/admin/users", get(admin_users))
+        .route("/admin/users/{id}/role", post(admin_update_role))
+        .route("/admin/cache", get(admin_cache_stats))
+        .route("/admin/ratelimit", get(admin_ratelimit_stats))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            rate_limit_middleware,
+        ))
+        .with_state(state)
 }
 
 async fn health() -> impl IntoResponse {
@@ -197,6 +222,143 @@ async fn health() -> impl IntoResponse {
         "service": "universal-document-converter-api",
         "version": env!("CARGO_PKG_VERSION"),
     }))
+}
+
+// ---------- OpenAPI ----------
+
+/// The hand-written spec, baked into the binary at compile time.
+const OPENAPI_YAML: &str = include_str!("../openapi/openapi.yaml");
+
+async fn openapi_yaml() -> Response {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "application/yaml; charset=utf-8")
+        .header("cache-control", "public, max-age=300")
+        .body(Body::from(OPENAPI_YAML))
+        .expect("static body")
+}
+
+async fn openapi_json() -> Response {
+    // Convert YAML → JSON on the fly. Cheap (file is < 50 KB) and means
+    // we only have one source of truth.
+    let value: serde_yaml::Value =
+        serde_yaml::from_str(OPENAPI_YAML).expect("openapi yaml parses at build time");
+    let json = serde_json::to_vec(&value).expect("openapi value serialises to JSON");
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "application/json")
+        .header("cache-control", "public, max-age=300")
+        .body(Body::from(json))
+        .expect("static body")
+}
+
+// ---------- Rate limiting ----------
+
+/// Paths that bypass the rate limiter — pure status probes that must
+/// always answer so monitors don't flag the service as down under burst
+/// load.
+const RATE_LIMIT_EXEMPT_PATHS: &[&str] = &["/health", "/openapi.yaml", "/openapi.json"];
+
+async fn rate_limit_middleware(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    req: Request,
+    next: Next,
+) -> Response {
+    let path = req.uri().path();
+    if RATE_LIMIT_EXEMPT_PATHS.iter().any(|p| path == *p) {
+        return next.run(req).await;
+    }
+
+    // Resolve the caller (cookie or bearer key). Failures are treated as
+    // anonymous — auth errors are the handler's job to return.
+    let auth_header = req
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .map(String::from);
+    let ctx = auth::resolve(&state, &jar, auth_header.as_deref())
+        .await
+        .ok()
+        .flatten();
+
+    let (identity, tier) = if let Some(ctx) = ctx.as_ref() {
+        let id = if let Some(kid) = ctx.api_key_id {
+            Identity::ApiKey(kid)
+        } else {
+            Identity::User(ctx.user.id)
+        };
+        (id, Tier::for_role(&ctx.user.role))
+    } else {
+        // Prefer the X-Forwarded-For first hop (Caddy injects it), fall
+        // back to the direct peer addr from ConnectInfo extensions,
+        // finally to a shared "anon" bucket so a missing header doesn't
+        // crash through unlimited.
+        let ip = req
+            .headers()
+            .get("x-forwarded-for")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| s.split(',').next())
+            .map(|s| s.trim().to_string())
+            .or_else(|| {
+                req.extensions()
+                    .get::<ConnectInfo<SocketAddr>>()
+                    .map(|c| c.0.ip().to_string())
+            })
+            .unwrap_or_else(|| "anon".to_string());
+        (Identity::Ip(ip), Tier::ANON)
+    };
+
+    let decision = state.rate_limiter.check(identity, tier);
+    match decision {
+        Decision::Allow { remaining, capacity } => {
+            let mut resp = next.run(req).await;
+            add_rate_headers(resp.headers_mut(), remaining, capacity);
+            resp
+        }
+        Decision::Limited {
+            retry_after_secs,
+            capacity,
+        } => {
+            let body = json!({
+                "ok": false,
+                "error": "rate limit exceeded",
+                "retry_after_secs": retry_after_secs,
+            });
+            let mut resp = (StatusCode::TOO_MANY_REQUESTS, Json(body)).into_response();
+            let h = resp.headers_mut();
+            h.insert(
+                "retry-after",
+                HeaderValue::from_str(&retry_after_secs.to_string())
+                    .unwrap_or(HeaderValue::from_static("60")),
+            );
+            add_rate_headers(h, 0, capacity);
+            resp
+        }
+    }
+}
+
+fn add_rate_headers(headers: &mut HeaderMap, remaining: u32, capacity: u32) {
+    if let Ok(v) = HeaderValue::from_str(&capacity.to_string()) {
+        headers.insert("x-ratelimit-limit", v);
+    }
+    if let Ok(v) = HeaderValue::from_str(&remaining.to_string()) {
+        headers.insert("x-ratelimit-remaining", v);
+    }
+    if let Ok(v) = HeaderValue::from_str(&rate_limit::WINDOW_SECS.to_string()) {
+        headers.insert("x-ratelimit-window-seconds", v);
+    }
+}
+
+async fn admin_ratelimit_stats(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    auth::require_admin(&state, &jar).await?;
+    Ok(Json(json!({
+        "ok": true,
+        "ratelimit": state.rate_limiter.stats(),
+    })))
 }
 
 async fn not_found() -> impl IntoResponse {

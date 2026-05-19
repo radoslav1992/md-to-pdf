@@ -5,6 +5,7 @@ use std::str::FromStr;
 
 use std::sync::Arc;
 
+use crate::rate_limit::SharedRateLimiter;
 use crate::render_cache::SharedRenderCache;
 
 #[derive(Clone)]
@@ -17,6 +18,10 @@ pub struct AppState {
     /// how concurrent renders are gated and how warm caches survive.
     pub chromium_pool: Arc<crate::pdf::ChromiumSlotPool>,
     pub render_cache: SharedRenderCache,
+    /// Per-identity token bucket rate limiter. Wired in via
+    /// `rate_limit_middleware` on the `/api/...` and `/api/v1/...`
+    /// router stacks.
+    pub rate_limiter: SharedRateLimiter,
 }
 
 pub async fn connect(url: &str) -> Result<SqlitePool, sqlx::Error> {

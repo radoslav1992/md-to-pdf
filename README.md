@@ -130,6 +130,60 @@ No third-party service. Chromium + pandoc are bundled in the API image
 All endpoints accept/return JSON. Auth is via an HttpOnly session cookie
 **or** an `Authorization: Bearer <api-key>` header.
 
+### Versioning
+
+Every endpoint is reachable at two paths:
+
+- `/api/v1/<endpoint>` — canonical, stable v1 surface
+- `/api/<endpoint>`    — legacy unversioned alias (kept forever)
+
+Future breaking changes will land at `/api/v2/...` without disturbing
+v1. New clients should always prefer the explicit version.
+
+### OpenAPI & Docs
+
+- `GET /api/v1/openapi.yaml` — the hand-written OpenAPI 3.1 spec
+- `GET /api/v1/openapi.json` — same spec, JSON encoding
+- `GET /api-docs` — interactive Redoc-rendered reference (vendored JS,
+  no third-party calls)
+
+To generate SDKs from the spec, point any OpenAPI generator at it. For
+example, the official [openapi-generator-cli](https://openapi-generator.tech):
+
+```sh
+# TypeScript axios client
+openapi-generator-cli generate -i http://localhost:8000/api/v1/openapi.yaml \
+  -g typescript-axios -o ./sdk-ts
+
+# Python pydantic + requests
+openapi-generator-cli generate -i http://localhost:8000/api/v1/openapi.yaml \
+  -g python -o ./sdk-py
+```
+
+### Rate limiting
+
+Every request after auth resolution is metered against a per-identity
+token bucket. The bucket key is, in order:
+
+1. API key id  (when `Authorization: Bearer …` is used)
+2. User id     (when the session cookie is used)
+3. IP          (anonymous — uses `X-Forwarded-For` first hop or the peer addr)
+
+Capacities per tier:
+
+| Tier      | Burst | Refill    |
+|-----------|-------|-----------|
+| Anonymous |    30 |  30 / min |
+| Free      |    60 |  60 / min |
+| Premium   |   600 | 600 / min |
+| Admin     | 6 000 | 6 000/min |
+
+Responses carry `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and
+`X-RateLimit-Window-Seconds`. When the bucket is empty the API returns
+`429 Too Many Requests` with a `Retry-After` header. `/health` and
+`/openapi.{yaml,json}` bypass the limiter so monitors and dashboards
+never get throttled.
+
 ### Auth
 - `POST /api/auth/signup` `{ email, password }` → user + sets cookie
 - `POST /api/auth/login`  `{ email, password }` → user + sets cookie
@@ -292,6 +346,8 @@ page, so file://-based renders still see the bytes.
 - `GET  /api/admin/cache`              — render-cache stats
   (entries, total_bytes, max_bytes, hits, misses). Cap configurable via
   `RENDER_CACHE_MAX_BYTES` env (default 128 MiB).
+- `GET  /api/admin/ratelimit`          — current rate-limit bucket count
+  + cap (the bucket cap is configurable via `RATE_LIMIT_MAX_BUCKETS`)
 
 ## Architecture notes
 
