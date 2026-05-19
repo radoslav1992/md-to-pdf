@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   api,
+  readFileAsBase64,
   type ConvertResult,
   type EnrichmentOptions,
   type PdfOptions,
@@ -137,7 +138,14 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
     toc_depth: 3,
     syntax_highlight: false,
     math: false,
+    mermaid: false,
   });
+  const [autoPreview, setAutoPreview] = useState(true);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const previewRef = useRef<HTMLIFrameElement | null>(null);
+  const syncingRef = useRef(false);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templateId, setTemplateId] = useState<number | null>(null);
   const [encryptEnabled, setEncryptEnabled] = useState<boolean>(false);
@@ -185,36 +193,73 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
   const customCssToSend = isPremium && customCss.trim() ? customCss : undefined;
   const pdfOptionsToSend = isPremium && outputType === 'pdf' ? pdfOptions : undefined;
   const enrichmentsActive =
-    isPremium && (enrichments.toc || enrichments.syntax_highlight || enrichments.math);
+    isPremium &&
+    (enrichments.toc || enrichments.syntax_highlight || enrichments.math || enrichments.mermaid);
   const enrichmentsToSend = enrichmentsActive ? enrichments : undefined;
   const templateIdToSend = isPremium && templateId !== null ? templateId : undefined;
+  const showPremiumLock = !isPremium && PREMIUM_INPUTS.includes(inputType);
 
-  const convert = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setInfo(null);
-    setResult(null);
-    setSavedId(null);
-    try {
-      const res = await api.convert({
-        type: inputType,
-        output: outputType,
-        content,
-        title,
-        theme: themeOrDefault,
-        custom_css: customCssToSend,
-        pdf_options: pdfOptionsToSend,
-        enrichments: enrichmentsToSend,
-        template_id: templateIdToSend,
-      });
-      setResult(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
+  const convert = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      const silent = opts?.silent ?? false;
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+        setInfo(null);
+        setResult(null);
+        setSavedId(null);
+      } else {
+        setError(null);
+      }
+      try {
+        const res = await api.convert({
+          type: inputType,
+          output: outputType,
+          content,
+          title,
+          theme: themeOrDefault,
+          custom_css: customCssToSend,
+          pdf_options: pdfOptionsToSend,
+          enrichments: enrichmentsToSend,
+          template_id: templateIdToSend,
+        });
+        setResult(res);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [
+      inputType,
+      outputType,
+      content,
+      title,
+      themeOrDefault,
+      customCssToSend,
+      pdfOptionsToSend,
+      enrichmentsToSend,
+      templateIdToSend,
+    ],
+  );
+
+  // Live preview: re-render on edits with a debounce so each keystroke
+  // doesn't trigger a request. Only runs for HTML output (PDF rendering is
+  // too expensive to do reactively) and when not blocked by the premium
+  // gate. Skipped while a manual conversion is in flight to avoid
+  // clobbering its result.
+  useEffect(() => {
+    if (!autoPreview) return;
+    if (outputType !== 'html') return;
+    if (showPremiumLock) return;
+    if (!content.trim()) return;
+    const handle = window.setTimeout(() => {
+      void convert({ silent: true });
+    }, 600);
+    return () => window.clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    inputType,
+    autoPreview,
     outputType,
     content,
     title,
@@ -223,7 +268,96 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
     pdfOptionsToSend,
     enrichmentsToSend,
     templateIdToSend,
+    inputType,
+    showPremiumLock,
   ]);
+
+  // Drag-and-drop image upload. Reads the dropped file(s), uploads them
+  // via /api/images, and inserts the markdown image syntax at the cursor.
+  // Only available to authenticated users (anonymous can't own images).
+  const insertAtCursor = useCallback((snippet: string) => {
+    const el = textareaRef.current;
+    if (!el) {
+      setContent((c) => c + snippet);
+      return;
+    }
+    const start = el.selectionStart ?? content.length;
+    const end = el.selectionEnd ?? content.length;
+    const next = content.slice(0, start) + snippet + content.slice(end);
+    setContent(next);
+    // Restore selection after React re-renders.
+    requestAnimationFrame(() => {
+      el.focus();
+      const cursor = start + snippet.length;
+      el.setSelectionRange(cursor, cursor);
+    });
+  }, [content]);
+
+  const uploadDroppedFile = useCallback(
+    async (file: File) => {
+      if (!isAuthed) {
+        setError('Log in to upload images.');
+        return;
+      }
+      if (!file.type.startsWith('image/')) {
+        setError(`Not an image: ${file.name}`);
+        return;
+      }
+      setUploadingImage(true);
+      setError(null);
+      try {
+        const data_base64 = await readFileAsBase64(file);
+        const res = await api.uploadImage({
+          filename: file.name,
+          content_type: file.type,
+          data_base64,
+        });
+        const alt = file.name.replace(/\.[^.]+$/, '');
+        insertAtCursor(`![${alt}](${res.image.url})\n`);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setUploadingImage(false);
+      }
+    },
+    [isAuthed, insertAtCursor],
+  );
+
+  const onTextareaDrop = useCallback(
+    async (e: React.DragEvent<HTMLTextAreaElement>) => {
+      e.preventDefault();
+      setDragActive(false);
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      const images = files.filter((f) => f.type.startsWith('image/'));
+      for (const file of images) {
+        // eslint-disable-next-line no-await-in-loop
+        await uploadDroppedFile(file);
+      }
+    },
+    [uploadDroppedFile],
+  );
+
+  // Synced scroll: when the source editor scrolls, scroll the HTML preview
+  // by the same percentage. Best-effort — only works when the preview
+  // iframe lives on the same origin (which it does, since we use srcDoc).
+  const onTextareaScroll = useCallback(() => {
+    if (syncingRef.current) return;
+    const el = textareaRef.current;
+    const frame = previewRef.current;
+    if (!el || !frame) return;
+    const doc = frame.contentDocument;
+    if (!doc) return;
+    const maxSrc = el.scrollHeight - el.clientHeight;
+    if (maxSrc <= 0) return;
+    const ratio = el.scrollTop / maxSrc;
+    const scroller = doc.scrollingElement || doc.documentElement;
+    const maxDst = scroller.scrollHeight - scroller.clientHeight;
+    syncingRef.current = true;
+    scroller.scrollTop = ratio * maxDst;
+    requestAnimationFrame(() => {
+      syncingRef.current = false;
+    });
+  }, []);
 
   const save = useCallback(async () => {
     if (!isAuthed) {
@@ -289,8 +423,6 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
     return null;
   }, [result]);
 
-  const showPremiumLock = !isPremium && PREMIUM_INPUTS.includes(inputType);
-
   return (
     <div className="grid lg:grid-cols-2 gap-4">
       <div className="flex flex-col gap-3">
@@ -350,7 +482,7 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
             )}
             <button
               type="button"
-              onClick={convert}
+              onClick={() => void convert()}
               disabled={loading || showPremiumLock}
               className="bg-brand-600 hover:bg-brand-700 disabled:bg-stone-300 text-white font-medium px-4 py-1.5 rounded-md text-sm transition"
             >
@@ -453,6 +585,16 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                   }
                 />
                 Math ($LaTeX$ → MathML)
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={enrichments.mermaid ?? false}
+                  onChange={(e) =>
+                    setEnrichments({ ...enrichments, mermaid: e.target.checked })
+                  }
+                />
+                Mermaid diagrams (```mermaid)
               </label>
             </div>
 
@@ -641,20 +783,68 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
           </div>
         </details>
 
-        <textarea
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          spellCheck={false}
-          className="w-full h-[460px] font-mono text-sm border border-stone-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-brand-500"
-        />
+        <div
+          className={
+            'relative rounded-lg ' +
+            (dragActive ? 'ring-2 ring-brand-400 ring-offset-1' : '')
+          }
+          onDragEnter={(e) => {
+            if (!isAuthed) return;
+            const dt = e.dataTransfer;
+            if (dt && Array.from(dt.types).includes('Files')) {
+              setDragActive(true);
+            }
+          }}
+          onDragLeave={(e) => {
+            if (e.currentTarget === e.target) setDragActive(false);
+          }}
+        >
+          <textarea
+            ref={textareaRef}
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            onScroll={onTextareaScroll}
+            onDragOver={(e) => {
+              if (isAuthed) e.preventDefault();
+            }}
+            onDrop={onTextareaDrop}
+            spellCheck={false}
+            className="w-full h-[460px] font-mono text-sm border border-stone-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          />
+          {dragActive && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-brand-50/80 rounded-lg border-2 border-dashed border-brand-400 text-sm font-medium text-brand-800">
+              Drop an image to upload and insert it
+            </div>
+          )}
+          {uploadingImage && (
+            <div className="pointer-events-none absolute top-2 right-2 text-xs text-brand-700 bg-white/90 border border-brand-200 rounded px-2 py-0.5">
+              Uploading image…
+            </div>
+          )}
+        </div>
+        {isAuthed && (
+          <p className="text-xs text-stone-500">
+            Tip: drag and drop an image onto the editor to upload it.
+          </p>
+        )}
       </div>
 
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-stone-700">Preview</h2>
-          {result?.warnings && result.warnings.length > 0 && (
-            <span className="text-xs text-warn-600">{result.warnings.length} warning(s)</span>
-          )}
+          <div className="flex items-center gap-3">
+            <label className="text-xs text-stone-600 flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={autoPreview}
+                onChange={(e) => setAutoPreview(e.target.checked)}
+              />
+              Live preview
+            </label>
+            {result?.warnings && result.warnings.length > 0 && (
+              <span className="text-xs text-warn-600">{result.warnings.length} warning(s)</span>
+            )}
+          </div>
         </div>
         <div className="border border-stone-300 rounded-lg h-[460px] bg-white overflow-hidden">
           {error && (
@@ -667,10 +857,11 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
             <iframe title="PDF preview" src={pdfDataUrl} className="w-full h-full bg-white" />
           ) : result?.content ? (
             <iframe
+              ref={previewRef}
               title="HTML preview"
               srcDoc={previewSrcDoc}
               className="w-full h-full bg-white"
-              sandbox="allow-same-origin"
+              sandbox="allow-same-origin allow-scripts"
             />
           ) : (
             <div className="p-4 text-sm text-stone-500">

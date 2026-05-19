@@ -1,8 +1,11 @@
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::db::{AppState, User};
 use crate::enrichments::Enrichments;
 use crate::error::ConvertError;
+use crate::images;
 use crate::pandoc;
 use crate::pdf;
 use crate::templates;
@@ -67,11 +70,13 @@ pub struct EnrichmentOptions {
     pub syntax_highlight: bool,
     #[serde(default)]
     pub math: bool,
+    #[serde(default)]
+    pub mermaid: bool,
 }
 
 impl EnrichmentOptions {
     pub fn is_active(&self) -> bool {
-        self.toc || self.syntax_highlight || self.math
+        self.toc || self.syntax_highlight || self.math || self.mermaid
     }
 }
 
@@ -221,14 +226,17 @@ pub async fn run(
         other => return Err(ConvertError::UnsupportedInput(other.to_string())),
     };
 
+    let mut has_mermaid = false;
     if let Some(opts) = req.enrichments.as_ref().filter(|o| o.is_active()) {
         let e = Enrichments {
             toc: opts.toc,
             toc_depth: opts.toc_depth.unwrap_or(3),
             syntax_highlight: opts.syntax_highlight,
             math: opts.math,
+            mermaid: opts.mermaid,
         };
         body_html = crate::enrichments::apply(&body_html, &e);
+        has_mermaid = e.mermaid && crate::enrichments::document_has_mermaid(&body_html);
     }
 
     let title = req.title.clone().unwrap_or_else(|| "Document".to_string());
@@ -238,6 +246,7 @@ pub async fn run(
         &theme_name,
         custom_css.as_deref(),
         pdf_options.as_ref(),
+        has_mermaid,
     );
 
     match req.output.to_ascii_lowercase().as_str() {
@@ -257,7 +266,20 @@ pub async fn run(
                 .as_ref()
                 .and_then(|o| o.page_numbers)
                 .unwrap_or(false);
-            let pdf_bytes = pdf::render(&state.chromium_bin, &document, want_numbers).await?;
+            // Inline any `/api/images/N` references as data: URIs so Chromium
+            // (loading the page over `file://`) can render them. Skipped for
+            // anonymous users because they can't own images.
+            let document = if let Some(u) = user {
+                inline_user_images(&document, &state.pool, u).await
+            } else {
+                document
+            };
+            // Mermaid needs JS to execute before the PDF is captured. We let
+            // Chromium run scripts up to a budget rather than blocking
+            // indefinitely.
+            let wait_for_js = has_mermaid;
+            let pdf_bytes =
+                pdf::render(&state.chromium_bin, &document, want_numbers, wait_for_js).await?;
             let encoded = pdf::encode_base64(&pdf_bytes);
             Ok(ConvertResponse {
                 ok: true,
@@ -401,6 +423,7 @@ fn wrap_document(
     theme: &str,
     custom_css: Option<&str>,
     pdf_options: Option<&PdfOptions>,
+    include_mermaid: bool,
 ) -> String {
     let theme_css = themes::css_for(theme);
     let page_css = pdf_options.map(page_css).unwrap_or_default();
@@ -451,12 +474,25 @@ fn wrap_document(
         ""
     };
 
+    // Mermaid scripts are appended verbatim to the document. The bundle is
+    // ~3 MB — heavy, but only emitted when the user actually has a
+    // ```mermaid block, and avoids any third-party CDN.
+    let mermaid_block = if include_mermaid {
+        format!(
+            "<script>{bundle}</script><script>{init}</script>",
+            bundle = crate::enrichments::MERMAID_JS,
+            init = crate::enrichments::MERMAID_INIT,
+        )
+    } else {
+        String::new()
+    };
+
     format!(
         r#"<!doctype html>
 <html lang="en"><head><meta charset="utf-8"/>
 <title>{title}</title>
 <style>{theme_css}{header_footer_css}{cover_css}{page_css}{custom}</style>
-</head><body>{header}{cover}{body}{footer}</body></html>"#,
+</head><body>{header}{cover}{body}{footer}{mermaid_block}</body></html>"#,
         title = html_escape(title),
         theme_css = theme_css,
         header_footer_css = header_footer_css,
@@ -467,6 +503,7 @@ fn wrap_document(
         cover = cover,
         body = body,
         footer = footer,
+        mermaid_block = mermaid_block,
     )
 }
 
@@ -569,6 +606,45 @@ fn html_escape(input: &str) -> String {
         }
     }
     out
+}
+
+static IMAGE_URL_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"/api/images/(\d+)").unwrap());
+
+/// Replace every `/api/images/{id}` substring in `document` with a
+/// `data:` URI by loading the bytes from SQLite. References to images
+/// that don't belong to `user` (or don't exist) are left alone — Chromium
+/// will simply fail to load them and the PDF will render with the broken
+/// image marker.
+async fn inline_user_images(document: &str, pool: &sqlx::SqlitePool, user: &User) -> String {
+    // Collect unique ids first so we don't run the same query repeatedly
+    // for the same image referenced from multiple `<img>` tags.
+    let mut ids: Vec<i64> = IMAGE_URL_RE
+        .captures_iter(document)
+        .filter_map(|c| c.get(1).and_then(|m| m.as_str().parse::<i64>().ok()))
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    if ids.is_empty() {
+        return document.to_string();
+    }
+
+    let mut replacements: std::collections::HashMap<i64, String> =
+        std::collections::HashMap::new();
+    for id in ids {
+        if let Ok((meta, bytes)) = images::fetch(pool, user, id).await {
+            replacements.insert(id, images::to_data_uri(&meta.content_type, &bytes));
+        }
+    }
+
+    IMAGE_URL_RE
+        .replace_all(document, |caps: &regex::Captures| {
+            caps.get(1)
+                .and_then(|m| m.as_str().parse::<i64>().ok())
+                .and_then(|id| replacements.get(&id).cloned())
+                .unwrap_or_else(|| caps[0].to_string())
+        })
+        .into_owned()
 }
 
 #[cfg(test)]
@@ -688,8 +764,22 @@ mod tests {
 
     #[test]
     fn wrap_document_injects_theme_css() {
-        let doc = wrap_document("t", "<p>x</p>", "github", None, None);
+        let doc = wrap_document("t", "<p>x</p>", "github", None, None, false);
         assert!(doc.contains("border-bottom: 1px solid #d1d9e0"));
+    }
+
+    #[test]
+    fn wrap_document_appends_mermaid_when_requested() {
+        let doc = wrap_document("t", "<pre class=\"mermaid\">graph</pre>", "default", None, None, true);
+        // The bundle is large; check for a stable marker that the script tag was emitted.
+        assert!(doc.contains("<script>"));
+        assert!(doc.contains("mermaid.run"));
+    }
+
+    #[test]
+    fn wrap_document_skips_mermaid_when_not_requested() {
+        let doc = wrap_document("t", "<p>x</p>", "default", None, None, false);
+        assert!(!doc.contains("mermaid.run"));
     }
 
     #[test]

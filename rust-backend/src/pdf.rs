@@ -14,10 +14,16 @@ use crate::error::ConvertError;
 /// `page_numbers` controls whether Chromium's built-in header/footer (page
 /// numbers + document title) is included. Custom headers/footers are
 /// rendered via CSS `position: fixed` elements in the document itself.
+///
+/// `wait_for_js` extends Chromium's virtual time budget so client-side
+/// scripts (currently only the bundled Mermaid renderer) have enough
+/// wall time to finish before the page is captured. Adds a few hundred
+/// milliseconds to every PDF that needs it, so it's opt-in.
 pub async fn render(
     chromium_bin: &str,
     html: &str,
     page_numbers: bool,
+    wait_for_js: bool,
 ) -> Result<Vec<u8>, ConvertError> {
     let mut html_file = NamedTempFile::with_suffix(".html")
         .map_err(|e| ConvertError::Internal(format!("temp html: {e}")))?;
@@ -48,6 +54,13 @@ pub async fn render(
     ];
     if !page_numbers {
         args.push("--no-pdf-header-footer");
+    }
+    // Mermaid + any future JS enrichment runs asynchronously; the virtual
+    // time budget tells headless Chromium how long to let timers/promises
+    // run before the snapshot. 8s is comfortably more than Mermaid needs
+    // for typical diagrams while still keeping render times predictable.
+    if wait_for_js {
+        args.push("--virtual-time-budget=8000");
     }
     args.push(&print_to_pdf);
     args.push(&file_url);

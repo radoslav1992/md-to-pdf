@@ -9,6 +9,11 @@
 //! - **Math** — replaces `$$…$$` and inline `$…$` LaTeX with MathML via
 //!   `latex2mathml`. Chromium renders MathML natively, so this works
 //!   without injecting any JS.
+//! - **Mermaid diagrams** — converts ` ```mermaid ` fences into raw
+//!   `<pre class="mermaid">` blocks and tags the document so the wrapper
+//!   can append the bundled `mermaid.min.js`. Chromium runs the script
+//!   when it renders the PDF (and the preview iframe runs it client-side
+//!   for the HTML output), so no external service is required.
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -23,7 +28,32 @@ pub struct Enrichments {
     pub toc_depth: u8,
     pub syntax_highlight: bool,
     pub math: bool,
+    pub mermaid: bool,
 }
+
+/// The bundled Mermaid build, embedded at compile time so renders work
+/// without any outbound network access. Updated by replacing the vendored
+/// file in `rust-backend/vendor/mermaid.min.js`.
+pub const MERMAID_JS: &str = include_str!("../vendor/mermaid.min.js");
+
+/// Inline init script that boots Mermaid once the DOM is ready. Run last,
+/// after the bundle has executed.
+pub const MERMAID_INIT: &str = r#"
+(function(){
+  function boot(){
+    if (typeof window === 'undefined' || !window.mermaid) return;
+    try {
+      window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'default' });
+      window.mermaid.run({ querySelector: 'pre.mermaid' }).catch(function(){});
+    } catch (e) { /* swallow — fall back to raw text */ }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
+"#;
 
 static SYNTAX_SET: Lazy<SyntaxSet> = Lazy::new(SyntaxSet::load_defaults_newlines);
 static THEME_SET: Lazy<ThemeSet> = Lazy::new(ThemeSet::load_defaults);
@@ -45,8 +75,22 @@ static MATH_BLOCK_RE: Lazy<Regex> =
 static MATH_INLINE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\$([^\$\n]+?)\$").unwrap());
 
+/// Matches the HTML pulldown_cmark emits for a ```mermaid fence:
+/// `<pre><code class="language-mermaid">…</code></pre>`. We capture the
+/// (HTML-escaped) body so we can unescape and emit raw text for Mermaid
+/// to consume.
+static MERMAID_BLOCK_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?s)<pre[^>]*><code\s+class="language-mermaid"[^>]*>(.*?)</code></pre>"#).unwrap()
+});
+
 pub fn apply(html: &str, options: &Enrichments) -> String {
     let mut out = html.to_string();
+    // Mermaid first so the diagram blocks aren't mangled by the syntax
+    // highlighter (which targets the same `<pre><code class="language-…">`
+    // shape).
+    if options.mermaid {
+        out = transform_mermaid_blocks(&out);
+    }
     if options.syntax_highlight {
         out = highlight_code_blocks(&out);
     }
@@ -57,6 +101,24 @@ pub fn apply(html: &str, options: &Enrichments) -> String {
         out = prepend_toc(&out, options.toc_depth.max(1).min(4));
     }
     out
+}
+
+/// Returns `true` if the HTML contains at least one Mermaid-ready block
+/// after `apply` has run. Used by the document wrapper to decide whether
+/// to inject the bundled `mermaid.min.js`.
+pub fn document_has_mermaid(html: &str) -> bool {
+    html.contains("class=\"mermaid\"")
+}
+
+fn transform_mermaid_blocks(html: &str) -> String {
+    // The captured body is already HTML-escaped by pulldown_cmark. Leaving
+    // it escaped keeps the document well-formed; Mermaid reads `textContent`
+    // when it `run`s, which the browser unescapes for us.
+    MERMAID_BLOCK_RE
+        .replace_all(html, |caps: &regex::Captures| {
+            format!("<pre class=\"mermaid\">{}</pre>", &caps[1])
+        })
+        .into_owned()
 }
 
 fn highlight_code_blocks(html: &str) -> String {
@@ -329,5 +391,23 @@ mod tests {
     fn slugify_strips_punctuation() {
         let s = slugify("Hello, World!", &[]);
         assert_eq!(s, "hello-world");
+    }
+
+    #[test]
+    fn mermaid_block_is_converted_to_pre() {
+        let html = r#"<pre><code class="language-mermaid">graph TD; A--&gt;B;</code></pre>"#;
+        let out = transform_mermaid_blocks(html);
+        assert!(out.contains("<pre class=\"mermaid\">"));
+        // The original `-->` survived unescape + escape round-trip.
+        assert!(out.contains("A--&gt;B;"));
+        assert!(document_has_mermaid(&out));
+    }
+
+    #[test]
+    fn mermaid_only_triggers_for_language_mermaid() {
+        let html = r#"<pre><code class="language-rust">fn main(){}</code></pre>"#;
+        let out = transform_mermaid_blocks(html);
+        assert_eq!(out, html);
+        assert!(!document_has_mermaid(&out));
     }
 }
