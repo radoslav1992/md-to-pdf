@@ -45,11 +45,11 @@ export default function ExtractTool() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <label className="text-sm font-medium text-slate-700">OCR mode</label>
+        <label className="text-sm font-medium text-stone-700">OCR mode</label>
         <select
           value={mode}
           onChange={(e) => setMode(e.target.value as Mode)}
-          className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+          className="border border-stone-300 rounded-md px-2 py-1 text-sm bg-white"
         >
           <option value="auto">Auto (OCR only if text PDF is sparse)</option>
           <option value="force">Force OCR (slow, accurate on scans)</option>
@@ -71,13 +71,13 @@ export default function ExtractTool() {
       </div>
 
       {filename && (
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-stone-500">
           File: <span className="font-mono">{filename}</span>
         </p>
       )}
 
       {error && (
-        <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+        <div className="text-sm text-danger-700 bg-danger-50 border border-danger-100 rounded px-3 py-2">
           {error}
         </div>
       )}
@@ -85,7 +85,7 @@ export default function ExtractTool() {
       {result && (
         <div>
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-slate-600">
+            <p className="text-xs text-stone-600">
               Method: <span className="font-mono">{result.method}</span>
               {result.page_count !== null && (
                 <span className="ml-3">
@@ -107,7 +107,7 @@ export default function ExtractTool() {
           <textarea
             readOnly
             value={result.markdown}
-            className="w-full h-[400px] font-mono text-sm border border-slate-300 rounded-lg p-3 bg-slate-50"
+            className="w-full h-[400px] font-mono text-sm border border-stone-300 rounded-lg p-3 bg-stone-50"
           />
         </div>
       )}

@@ -36,19 +36,19 @@ export default function AdminUserList() {
   }, []);
 
   if (users === null && !error) {
-    return <p className="text-slate-500 text-sm">Loading…</p>;
+    return <p className="text-stone-500 text-sm">Loading…</p>;
   }
 
   return (
     <div>
       {error && (
-        <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2 mb-3">
+        <div className="text-sm text-danger-700 bg-danger-50 border border-danger-100 rounded px-3 py-2 mb-3">
           {error}
         </div>
       )}
-      <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white">
+      <div className="overflow-x-auto border border-stone-200 rounded-lg bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+          <thead className="bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
             <tr>
               <th className="px-3 py-2">ID</th>
               <th className="px-3 py-2">Email</th>
@@ -59,13 +59,13 @@ export default function AdminUserList() {
           </thead>
           <tbody>
             {users?.map((user) => (
-              <tr key={user.id} className="border-t border-slate-100">
-                <td className="px-3 py-2 text-slate-500">{user.id}</td>
-                <td className="px-3 py-2 font-medium text-slate-900">{user.email}</td>
+              <tr key={user.id} className="border-t border-stone-100">
+                <td className="px-3 py-2 text-stone-500">{user.id}</td>
+                <td className="px-3 py-2 font-medium text-stone-900">{user.email}</td>
                 <td className="px-3 py-2">
                   <RoleBadge role={user.role} />
                 </td>
-                <td className="px-3 py-2 text-slate-500 text-xs">
+                <td className="px-3 py-2 text-stone-500 text-xs">
                   {new Date(user.created_at * 1000).toLocaleDateString()}
                 </td>
                 <td className="px-3 py-2 text-right">
@@ -73,7 +73,7 @@ export default function AdminUserList() {
                     value={user.role}
                     disabled={busyId === user.id}
                     onChange={(e) => onChangeRole(user.id, e.target.value as Role)}
-                    className="border border-slate-300 rounded-md px-2 py-1 text-xs bg-white"
+                    className="border border-stone-300 rounded-md px-2 py-1 text-xs bg-white"
                   >
                     {ROLES.map((r) => (
                       <option key={r} value={r}>
@@ -96,8 +96,8 @@ function RoleBadge({ role }: { role: Role }) {
     role === 'admin'
       ? 'bg-purple-100 text-purple-800'
       : role === 'premium'
-      ? 'bg-amber-100 text-amber-800'
-      : 'bg-slate-100 text-slate-700';
+      ? 'bg-warn-100 text-warn-800'
+      : 'bg-stone-100 text-stone-700';
   return (
     <span
       className={`text-[10px] uppercase tracking-wide font-semibold px-2 py-0.5 rounded ${classes}`}

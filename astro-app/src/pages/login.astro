@@ -4,13 +4,21 @@ import AuthForm from '../components/AuthForm.tsx';
 ---
 
 <BaseLayout title="Log in — Universal Document Converter">
-  <section class="max-w-md mx-auto px-4 py-16">
-    <h1 class="text-2xl font-bold text-slate-900 text-center">Log in</h1>
-    <p class="mt-2 text-sm text-slate-600 text-center">
-      Welcome back. Log in to access your saved documents.
-    </p>
-    <div class="mt-8 border border-slate-200 rounded-xl p-6 bg-white">
-      <AuthForm mode="login" client:load />
+  <section class="relative">
+    <div class="absolute inset-0 bg-hero-warm pointer-events-none"></div>
+    <div class="relative max-w-md mx-auto px-4 pt-16 pb-20">
+      <div class="text-center">
+        <h1 class="text-3xl font-bold tracking-tight text-stone-900">Welcome back</h1>
+        <p class="mt-2 text-sm text-stone-600">
+          Log in to access your saved documents.
+        </p>
+      </div>
+      <div class="mt-8 card p-6">
+        <AuthForm mode="login" client:load />
+      </div>
+      <p class="mt-6 text-sm text-stone-600 text-center">
+        New here? <a href="/signup" class="link">Create an account</a>
+      </p>
     </div>
   </section>
 </BaseLayout>

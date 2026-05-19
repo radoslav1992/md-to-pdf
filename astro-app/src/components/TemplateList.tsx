@@ -141,7 +141,7 @@ export default function TemplateList() {
     <div className="grid lg:grid-cols-2 gap-6">
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold text-slate-800">Saved templates</h2>
+          <h2 className="font-semibold text-stone-800">Saved templates</h2>
           <button
             type="button"
             onClick={onNew}
@@ -151,19 +151,19 @@ export default function TemplateList() {
           </button>
         </div>
         {error && (
-          <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2 mb-3">
+          <div className="text-sm text-danger-700 bg-danger-50 border border-danger-100 rounded px-3 py-2 mb-3">
             {error}
           </div>
         )}
         {info && !error && (
-          <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2 mb-3">
+          <div className="text-sm text-success-700 bg-success-50 border border-success-100 rounded px-3 py-2 mb-3">
             {info}
           </div>
         )}
         {items === null ? (
-          <p className="text-sm text-slate-500">Loading…</p>
+          <p className="text-sm text-stone-500">Loading…</p>
         ) : items.length === 0 ? (
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-stone-500">
             No templates yet. Create one to apply consistent styling across documents.
           </p>
         ) : (
@@ -171,12 +171,12 @@ export default function TemplateList() {
             {items.map((t) => (
               <li
                 key={t.id}
-                className={`border rounded-lg p-3 ${editId === t.id ? 'border-brand-500 bg-brand-50' : 'border-slate-200'}`}
+                className={`border rounded-lg p-3 ${editId === t.id ? 'border-brand-500 bg-brand-50' : 'border-stone-200'}`}
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium text-slate-900">{t.name}</div>
-                    <div className="text-xs text-slate-500 mt-0.5">
+                    <div className="font-medium text-stone-900">{t.name}</div>
+                    <div className="text-xs text-stone-500 mt-0.5">
                       {t.theme ?? 'default'} ·{' '}
                       {new Date(t.updated_at * 1000).toLocaleString()}
                     </div>
@@ -185,7 +185,7 @@ export default function TemplateList() {
                     <button onClick={() => onEdit(t)} className="text-brand-600 hover:text-brand-700">
                       Edit
                     </button>
-                    <button onClick={() => onDelete(t.id)} className="text-red-600 hover:text-red-700">
+                    <button onClick={() => onDelete(t.id)} className="text-danger-600 hover:text-danger-700">
                       Delete
                     </button>
                   </div>
@@ -196,29 +196,29 @@ export default function TemplateList() {
         )}
       </div>
 
-      <div className="border border-slate-200 rounded-lg p-4 bg-white">
+      <div className="border border-stone-200 rounded-lg p-4 bg-white">
         {editId === null ? (
-          <p className="text-sm text-slate-500">Select a template to edit, or create a new one.</p>
+          <p className="text-sm text-stone-500">Select a template to edit, or create a new one.</p>
         ) : (
           <div className="space-y-3">
-            <h3 className="font-semibold text-slate-900">
+            <h3 className="font-semibold text-stone-900">
               {editId === 'new' ? 'New template' : 'Edit template'}
             </h3>
             <div>
-              <label className="text-xs font-medium text-slate-700 block mb-1">Name</label>
+              <label className="text-xs font-medium text-stone-700 block mb-1">Name</label>
               <input
                 type="text"
                 value={draft.name}
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                className="w-full border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                className="w-full border border-stone-300 rounded-md px-2 py-1 text-sm bg-white"
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-700 block mb-1">Theme</label>
+              <label className="text-xs font-medium text-stone-700 block mb-1">Theme</label>
               <select
                 value={draft.theme}
                 onChange={(e) => setDraft({ ...draft, theme: e.target.value })}
-                className="w-full border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                className="w-full border border-stone-300 rounded-md px-2 py-1 text-sm bg-white"
               >
                 {THEMES.map((t) => (
                   <option key={t} value={t}>
@@ -229,11 +229,11 @@ export default function TemplateList() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-medium text-slate-700 block mb-1">Page size</label>
+                <label className="text-xs font-medium text-stone-700 block mb-1">Page size</label>
                 <select
                   value={draft.page_size}
                   onChange={(e) => setDraft({ ...draft, page_size: e.target.value })}
-                  className="w-full border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                  className="w-full border border-stone-300 rounded-md px-2 py-1 text-sm bg-white"
                 >
                   {['A4', 'A3', 'A5', 'Letter', 'Legal', 'Tabloid'].map((s) => (
                     <option key={s} value={s}>
@@ -243,13 +243,13 @@ export default function TemplateList() {
                 </select>
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-700 block mb-1">Orientation</label>
+                <label className="text-xs font-medium text-stone-700 block mb-1">Orientation</label>
                 <select
                   value={draft.orientation}
                   onChange={(e) =>
                     setDraft({ ...draft, orientation: e.target.value as 'portrait' | 'landscape' })
                   }
-                  className="w-full border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                  className="w-full border border-stone-300 rounded-md px-2 py-1 text-sm bg-white"
                 >
                   <option value="portrait">Portrait</option>
                   <option value="landscape">Landscape</option>
@@ -257,7 +257,7 @@ export default function TemplateList() {
               </div>
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-700 block mb-1">
+              <label className="text-xs font-medium text-stone-700 block mb-1">
                 Margins (top / right / bottom / left)
               </label>
               <div className="grid grid-cols-4 gap-2">
@@ -268,13 +268,13 @@ export default function TemplateList() {
                       type="text"
                       value={draft[k]}
                       onChange={(e) => setDraft({ ...draft, [k]: e.target.value })}
-                      className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                      className="border border-stone-300 rounded-md px-2 py-1 text-sm bg-white"
                     />
                   ),
                 )}
               </div>
             </div>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
+            <label className="flex items-center gap-2 text-sm text-stone-700">
               <input
                 type="checkbox"
                 checked={draft.page_numbers}
@@ -283,11 +283,11 @@ export default function TemplateList() {
               Page numbers
             </label>
             <div>
-              <label className="text-xs font-medium text-slate-700 block mb-1">Custom CSS</label>
+              <label className="text-xs font-medium text-stone-700 block mb-1">Custom CSS</label>
               <textarea
                 value={draft.custom_css}
                 onChange={(e) => setDraft({ ...draft, custom_css: e.target.value })}
-                className="w-full h-24 font-mono text-xs border border-slate-300 rounded-md p-2 bg-white"
+                className="w-full h-24 font-mono text-xs border border-stone-300 rounded-md p-2 bg-white"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -302,7 +302,7 @@ export default function TemplateList() {
               <button
                 type="button"
                 onClick={onCancel}
-                className="border border-slate-300 text-slate-700 px-4 py-1.5 rounded-md text-sm hover:bg-slate-50"
+                className="border border-stone-300 text-stone-700 px-4 py-1.5 rounded-md text-sm hover:bg-stone-50"
               >
                 Cancel
               </button>

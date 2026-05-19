@@ -7,14 +7,12 @@ import DocumentList from '../components/DocumentList.tsx';
   <section class="max-w-6xl mx-auto px-4 py-10">
     <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 class="text-3xl font-bold text-slate-900">Your documents</h1>
-        <p class="mt-2 text-slate-600">Saved conversions. Click any to preview.</p>
+        <span class="pill-brand">Workspace</span>
+        <h1 class="mt-2 text-3xl font-bold tracking-tight text-stone-900">Your documents</h1>
+        <p class="mt-2 text-stone-600">Saved conversions. Click any to preview, edit, share, or restore an earlier version.</p>
       </div>
-      <a
-        href="/editor"
-        class="bg-brand-600 hover:bg-brand-700 text-white font-medium px-4 py-2 rounded-md text-sm transition"
-      >
-        + New document
+      <a href="/editor" class="btn-primary">
+        <span>+</span> New document
       </a>
     </div>
     <DocumentList client:load />

@@ -6,44 +6,87 @@
   html {
     font-family: 'Inter', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
+    color-scheme: light;
+  }
+  body {
+    background: #fffbf3;
+    color: #1c1917; /* stone-900 */
+  }
+  /* Slightly tighter, more confident headings — gives the warmth some bones. */
+  h1, h2, h3 {
+    letter-spacing: -0.02em;
+  }
+  /* Reusable focus ring across all interactive elements. */
+  a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 2px solid theme('colors.brand.400');
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  ::selection {
+    background: theme('colors.brand.200');
+    color: theme('colors.brand.900');
   }
 }
 
 @layer components {
+  /* Card primitive used across dashboards, panels, list items. */
+  .card {
+    @apply bg-white border border-stone-200/80 rounded-2xl shadow-soft;
+  }
+  /* Subtle pill used for tags / metadata. */
+  .pill {
+    @apply inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full;
+  }
+  .pill-brand { @apply pill bg-brand-100 text-brand-800; }
+  .pill-peach { @apply pill bg-peach-100 text-peach-700; }
+  .pill-stone { @apply pill bg-stone-100 text-stone-700; }
+  .pill-success { @apply pill bg-success-100 text-success-800; }
+
+  /* Button primitives. */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 font-medium rounded-xl transition
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 hover:bg-brand-700 text-white shadow-soft px-4 py-2 text-sm;
+  }
+  .btn-secondary {
+    @apply btn bg-white hover:bg-stone-50 text-stone-800 border border-stone-200 px-4 py-2 text-sm;
+  }
+  .btn-peach {
+    @apply btn bg-peach-500 hover:bg-peach-600 text-white shadow-peach px-4 py-2 text-sm;
+  }
+  .btn-ghost {
+    @apply btn text-stone-700 hover:text-brand-700 hover:bg-stone-100 px-3 py-1.5 text-sm;
+  }
+
+  /* Form controls. */
+  .input {
+    @apply w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white
+           placeholder:text-stone-400 transition
+           focus:border-brand-400 focus:ring-2 focus:ring-brand-400/30 focus:outline-none;
+  }
+  .select { @apply input pr-8 appearance-none bg-no-repeat bg-[length:0.6em] bg-[right_0.75rem_center]; }
+  .textarea { @apply input; }
+
+  /* Inline link. */
+  .link {
+    @apply text-brand-700 hover:text-brand-800 underline-offset-2 hover:underline transition;
+  }
+
+  /* Prose for blog / docs. */
   .prose-doc {
     @apply max-w-3xl mx-auto;
   }
-  .prose-doc h1 {
-    @apply text-4xl font-bold mt-8 mb-4 text-slate-900;
-  }
-  .prose-doc h2 {
-    @apply text-2xl font-semibold mt-6 mb-3 text-slate-800;
-  }
-  .prose-doc h3 {
-    @apply text-xl font-semibold mt-5 mb-2 text-slate-800;
-  }
-  .prose-doc p {
-    @apply my-4 text-slate-700 leading-relaxed;
-  }
-  .prose-doc ul {
-    @apply list-disc list-inside my-4 space-y-1 text-slate-700;
-  }
-  .prose-doc ol {
-    @apply list-decimal list-inside my-4 space-y-1 text-slate-700;
-  }
-  .prose-doc a {
-    @apply text-brand-600 underline hover:text-brand-700;
-  }
-  .prose-doc code {
-    @apply bg-slate-100 text-slate-800 px-1 py-0.5 rounded font-mono text-sm;
-  }
-  .prose-doc pre {
-    @apply bg-slate-900 text-slate-100 p-4 rounded-lg overflow-x-auto my-4;
-  }
-  .prose-doc pre code {
-    @apply bg-transparent text-slate-100 p-0;
-  }
-  .prose-doc blockquote {
-    @apply border-l-4 border-brand-500 pl-4 italic text-slate-600 my-4;
-  }
+  .prose-doc h1 { @apply text-4xl font-bold mt-8 mb-4 text-stone-900; }
+  .prose-doc h2 { @apply text-2xl font-semibold mt-8 mb-3 text-stone-900; }
+  .prose-doc h3 { @apply text-xl font-semibold mt-6 mb-2 text-stone-900; }
+  .prose-doc p  { @apply my-4 text-stone-700 leading-relaxed; }
+  .prose-doc ul { @apply list-disc list-inside my-4 space-y-1 text-stone-700; }
+  .prose-doc ol { @apply list-decimal list-inside my-4 space-y-1 text-stone-700; }
+  .prose-doc a  { @apply link; }
+  .prose-doc code { @apply bg-stone-100 text-stone-800 px-1.5 py-0.5 rounded font-mono text-[0.9em]; }
+  .prose-doc pre  { @apply bg-stone-900 text-stone-100 p-4 rounded-xl overflow-x-auto my-4; }
+  .prose-doc pre code { @apply bg-transparent text-stone-100 p-0; }
+  .prose-doc blockquote { @apply border-l-4 border-brand-400 pl-4 italic text-stone-600 my-4; }
 }

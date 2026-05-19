@@ -57,7 +57,7 @@ export default function EditorWrapper() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <p className="text-slate-500">Loading document…</p>
+        <p className="text-stone-500">Loading document…</p>
       </div>
     );
   }
@@ -65,7 +65,7 @@ export default function EditorWrapper() {
   if (error) {
     return (
       <div className="max-w-2xl mx-auto py-20 text-center">
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
+        <div className="bg-danger-50 border border-danger-100 text-danger-700 px-4 py-3 rounded-lg mb-4">
           {error}
         </div>
         <a href="/editor" className="text-brand-600 hover:underline">Start with a new document</a>

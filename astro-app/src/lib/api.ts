@@ -12,6 +12,7 @@ export interface DocumentSummary {
   title: string;
   input_type: string;
   output_type: string;
+  is_encrypted: boolean;
   created_at: number;
   updated_at: number;
 }
@@ -23,6 +24,7 @@ export interface SavedDocument extends DocumentSummary {
   theme: string | null;
   custom_css: string | null;
   pdf_options: string | null;
+  encryption_salt: string | null;
 }
 
 export type PageSize = 'A4' | 'A3' | 'A5' | 'Letter' | 'Legal' | 'Tabloid';

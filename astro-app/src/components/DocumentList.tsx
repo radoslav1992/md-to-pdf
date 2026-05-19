@@ -53,52 +53,60 @@ export default function DocumentList() {
   );
 
   if (items === null && !error) {
-    return <p className="text-slate-500 text-sm">Loading…</p>;
+    return <p className="text-stone-500 text-sm">Loading…</p>;
   }
 
   return (
     <div className="grid lg:grid-cols-2 gap-6">
       <div>
         {error && (
-          <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2 mb-3">
+          <div className="text-sm text-danger-700 bg-danger-50 border border-danger-100 rounded-xl px-3 py-2 mb-3">
             {error}
           </div>
         )}
         {items && items.length === 0 ? (
-          <p className="text-slate-500 text-sm">
-            You haven't saved any documents yet. Head to the{' '}
-            <a href="/editor" className="text-brand-600 hover:text-brand-700 underline">
-              editor
+          <div className="card p-8 text-center">
+            <div className="text-4xl">📄</div>
+            <p className="mt-3 text-sm text-stone-600">
+              You haven't saved any documents yet.
+            </p>
+            <a href="/editor" className="btn-primary mt-4 inline-flex">
+              Open the editor
             </a>
-            .
-          </p>
+          </div>
         ) : (
           <ul className="space-y-2">
             {items?.map((doc) => (
               <li
                 key={doc.id}
-                className={`border rounded-lg p-3 transition ${
+                className={`card p-3 transition cursor-pointer ${
                   openDoc?.id === doc.id
-                    ? 'border-brand-500 bg-brand-50'
-                    : 'border-slate-200 hover:border-slate-300'
+                    ? 'border-brand-500 ring-2 ring-brand-200 bg-brand-50/40'
+                    : 'hover:border-stone-300 hover:shadow-glow/40'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <button
                     type="button"
                     onClick={() => onOpen(doc.id)}
-                    className="text-left flex-1"
+                    className="text-left flex-1 min-w-0"
                   >
-                    <div className="font-medium text-slate-900">{doc.title}</div>
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      {doc.input_type} → {doc.output_type} ·{' '}
+                    <div className="font-medium text-stone-900 truncate flex items-center gap-1.5">
+                      {doc.title}
+                      {doc.is_encrypted && (
+                        <span title="Encrypted at rest" className="text-peach-600 text-xs">🔒</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-stone-500 mt-0.5">
+                      <span className="font-mono">{doc.input_type}</span> →{' '}
+                      <span className="font-mono">{doc.output_type}</span> ·{' '}
                       {new Date(doc.updated_at * 1000).toLocaleString()}
                     </div>
                   </button>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 shrink-0">
                     <a
                       href={`/editor?id=${doc.id}`}
-                      className="text-xs text-brand-600 hover:text-brand-700"
+                      className="text-xs text-brand-700 hover:text-brand-800 hover:underline"
                     >
                       Edit
                     </a>
@@ -106,7 +114,7 @@ export default function DocumentList() {
                       type="button"
                       onClick={() => onDelete(doc.id)}
                       disabled={busy}
-                      className="text-xs text-red-600 hover:text-red-700"
+                      className="text-xs text-danger-600 hover:text-danger-700"
                     >
                       Delete
                     </button>
@@ -118,35 +126,36 @@ export default function DocumentList() {
         )}
       </div>
 
-      <div className="border border-slate-200 rounded-lg p-4 bg-white">
+      <div className="card p-4">
         {openDoc ? (
           <article>
             <header className="mb-3">
-              <h3 className="font-semibold text-slate-900">{openDoc.title}</h3>
-              <p className="text-xs text-slate-500">
-                {openDoc.input_type} · saved {new Date(openDoc.created_at * 1000).toLocaleString()}
+              <h3 className="font-semibold text-stone-900">{openDoc.title}</h3>
+              <p className="text-xs text-stone-500">
+                <span className="font-mono">{openDoc.input_type}</span> · saved{' '}
+                {new Date(openDoc.created_at * 1000).toLocaleString()}
               </p>
             </header>
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Source</h4>
-            <pre className="mt-1 text-xs bg-slate-50 border border-slate-200 rounded p-2 max-h-[200px] overflow-auto">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-500">Source</h4>
+            <pre className="mt-1 text-xs bg-cream-50 border border-stone-200 rounded-xl p-3 max-h-[200px] overflow-auto">
               {openDoc.content}
             </pre>
             {openDoc.rendered_html && (
               <>
-                <h4 className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Rendered HTML preview
+                <h4 className="mt-4 text-xs font-semibold uppercase tracking-wider text-stone-500">
+                  Rendered preview
                 </h4>
                 <iframe
                   title="Saved document preview"
                   srcDoc={openDoc.rendered_html}
                   sandbox="allow-same-origin"
-                  className="mt-1 w-full h-[260px] border border-slate-200 rounded"
+                  className="mt-1 w-full h-[260px] border border-stone-200 rounded-xl bg-white"
                 />
               </>
             )}
           </article>
         ) : (
-          <p className="text-sm text-slate-500">Select a document to preview it.</p>
+          <p className="text-sm text-stone-500">Select a document to preview it.</p>
         )}
       </div>
     </div>

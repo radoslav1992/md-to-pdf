@@ -1,0 +1,14 @@
+---
+interface Props {
+  emoji: string;
+  title: string;
+  body: string;
+}
+const { emoji, title, body } = Astro.props;
+---
+
+<div class="card p-5 hover:shadow-glow hover:-translate-y-0.5 transition-all duration-300">
+  <div class="text-3xl">{emoji}</div>
+  <h3 class="mt-3 text-base font-semibold text-stone-900">{title}</h3>
+  <p class="mt-1.5 text-sm text-stone-600 leading-relaxed">{body}</p>
+</div>
