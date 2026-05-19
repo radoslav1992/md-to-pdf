@@ -8,6 +8,7 @@ use crate::error::ConvertError;
 use crate::images;
 use crate::pandoc;
 use crate::pdf;
+use crate::render_cache::{self, CachedRender};
 use crate::templates;
 use crate::themes;
 
@@ -58,6 +59,9 @@ pub struct PdfOptions {
     pub header_template: Option<String>,
     pub footer_template: Option<String>,
     pub cover: Option<PdfCover>,
+    /// When `true`, post-process the rendered PDF through ghostscript
+    /// to produce a PDF/A-2b archival-grade file. Adds ~1s per render.
+    pub pdf_a: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -116,12 +120,50 @@ pub struct ConvertResponse {
     pub ok: bool,
     pub output_type: String,
     pub input_type: String,
+    /// Populated for text outputs (HTML, Markdown).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+    /// Backward-compat alias; only set when `output == "pdf"`. New clients
+    /// should prefer `output_base64` + `output_mime`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pdf_base64: Option<String>,
+    /// Base64 bytes for any binary output (pdf, docx, epub, odt, png, jpg).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_base64: Option<String>,
+    /// Content-Type for the bytes in `output_base64`. Lets the editor pick
+    /// the right download filename / preview UI without hard-coding cases.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_mime: Option<String>,
+    /// `true` when the response came from the render cache. Diagnostic
+    /// only — clients can ignore it.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub cached: bool,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
+}
+
+/// Output formats that produce binary bytes (not text). Anything not in
+/// this list — `html`, `markdown` — flows through `ConvertResponse::content`.
+const BINARY_OUTPUTS: &[&str] = &["pdf", "docx", "epub", "odt", "png", "jpg", "jpeg"];
+
+/// Outputs we cache. HTML is excluded because re-running the pipeline is
+/// already cheap (no subprocess) and clients hitting it on every keystroke
+/// (live preview) would otherwise pollute the cache.
+const CACHEABLE_OUTPUTS: &[&str] =
+    &["pdf", "docx", "epub", "odt", "png", "jpg", "jpeg", "markdown", "md"];
+
+fn output_mime(output: &str) -> &'static str {
+    match output {
+        "pdf" => "application/pdf",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "epub" => "application/epub+zip",
+        "odt" => "application/vnd.oasis.opendocument.text",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "html" => "text/html; charset=utf-8",
+        "markdown" | "md" => "text/markdown; charset=utf-8",
+        _ => "application/octet-stream",
+    }
 }
 
 pub async fn run(
@@ -249,19 +291,62 @@ pub async fn run(
         has_mermaid,
     );
 
-    match req.output.to_ascii_lowercase().as_str() {
-        "html" => Ok(ConvertResponse {
+    let output = req.output.to_ascii_lowercase();
+    if output != "html"
+        && output != "pdf"
+        && output != "markdown"
+        && output != "md"
+        && !BINARY_OUTPUTS.contains(&output.as_str())
+    {
+        return Err(ConvertError::UnsupportedOutput(output));
+    }
+
+    // ---- cache lookup ----
+    let pdf_options_json = pdf_options
+        .as_ref()
+        .and_then(|o| serde_json::to_string(o).ok());
+    let enrichments_json = req
+        .enrichments
+        .as_ref()
+        .filter(|e| e.is_active())
+        .and_then(|e| serde_json::to_string(e).ok());
+    let cache_key = render_cache::key(
+        user.map(|u| u.id),
+        &normalized_input,
+        &output,
+        &req.content,
+        &theme_name,
+        custom_css.as_deref(),
+        pdf_options_json.as_deref(),
+        enrichments_json.as_deref(),
+        &title,
+        req.template_id,
+    );
+    if CACHEABLE_OUTPUTS.contains(&output.as_str()) {
+        let hit = {
+            let mut cache = state.render_cache.lock().expect("render cache poisoned");
+            cache.get(&cache_key)
+        };
+        if let Some(hit) = hit {
+            return Ok(response_from_cached(&output, &hit, true));
+        }
+    }
+
+    // ---- actual render ----
+    let response = match output.as_str() {
+        "html" => ConvertResponse {
             ok: true,
             output_type: "html".to_string(),
-            input_type: normalized_input,
-            content: Some(document),
+            input_type: normalized_input.clone(),
+            content: Some(document.clone()),
             pdf_base64: None,
+            output_base64: None,
+            output_mime: Some(output_mime("html").to_string()),
+            cached: false,
             warnings: Vec::new(),
-        }),
+        },
         "pdf" => {
-            let _permit = state.pdf_semaphore.acquire().await.map_err(|e| {
-                ConvertError::Internal(format!("failed to acquire pdf permit: {e}"))
-            })?;
+            let slot = state.chromium_pool.acquire().await?;
             let want_numbers = pdf_options
                 .as_ref()
                 .and_then(|o| o.page_numbers)
@@ -269,28 +354,187 @@ pub async fn run(
             // Inline any `/api/images/N` references as data: URIs so Chromium
             // (loading the page over `file://`) can render them. Skipped for
             // anonymous users because they can't own images.
-            let document = if let Some(u) = user {
+            let doc = if let Some(u) = user {
                 inline_user_images(&document, &state.pool, u).await
             } else {
-                document
+                document.clone()
             };
-            // Mermaid needs JS to execute before the PDF is captured. We let
-            // Chromium run scripts up to a budget rather than blocking
-            // indefinitely.
-            let wait_for_js = has_mermaid;
-            let pdf_bytes =
-                pdf::render(&state.chromium_bin, &document, want_numbers, wait_for_js).await?;
+            let mut pdf_bytes = pdf::render_with_dir(
+                &state.chromium_bin,
+                Some(slot.data_dir()),
+                &doc,
+                want_numbers,
+                has_mermaid,
+            )
+            .await?;
+            // Optional PDF/A flattening. Off by default — adds a
+            // ghostscript pass — but turning it on is one extra option.
+            let want_pdf_a = pdf_options.as_ref().and_then(|o| o.pdf_a).unwrap_or(false);
+            if want_pdf_a {
+                pdf_bytes = crate::pdf_tools::to_pdf_a(&pdf_bytes).await?;
+            }
             let encoded = pdf::encode_base64(&pdf_bytes);
-            Ok(ConvertResponse {
+            ConvertResponse {
                 ok: true,
                 output_type: "pdf".to_string(),
-                input_type: normalized_input,
+                input_type: normalized_input.clone(),
                 content: None,
-                pdf_base64: Some(encoded),
+                pdf_base64: Some(encoded.clone()),
+                output_base64: Some(encoded),
+                output_mime: Some(output_mime("pdf").to_string()),
+                cached: false,
                 warnings: Vec::new(),
-            })
+            }
         }
-        other => Err(ConvertError::UnsupportedOutput(other.to_string())),
+        "png" | "jpg" | "jpeg" => {
+            let slot = state.chromium_pool.acquire().await?;
+            let doc = if let Some(u) = user {
+                inline_user_images(&document, &state.pool, u).await
+            } else {
+                document.clone()
+            };
+            let format = match output.as_str() {
+                "png" => pdf::ImageFormat::Png,
+                _ => pdf::ImageFormat::Jpeg,
+            };
+            let bytes = pdf::screenshot_with_dir(
+                &state.chromium_bin,
+                Some(slot.data_dir()),
+                &doc,
+                format,
+                has_mermaid,
+            )
+            .await?;
+            ConvertResponse {
+                ok: true,
+                output_type: output.clone(),
+                input_type: normalized_input.clone(),
+                content: None,
+                pdf_base64: None,
+                output_base64: Some(pdf::encode_base64(&bytes)),
+                output_mime: Some(output_mime(&output).to_string()),
+                cached: false,
+                warnings: Vec::new(),
+            }
+        }
+        "docx" | "epub" | "odt" => {
+            // Inline images first so pandoc can embed them. Pandoc reads
+            // `<img src="data:...">` fine and bakes the bytes into the
+            // resulting archive.
+            let doc = if let Some(u) = user {
+                inline_user_images(&document, &state.pool, u).await
+            } else {
+                document.clone()
+            };
+            let bytes = pandoc::from_html_to_bytes(&output, &doc).await?;
+            ConvertResponse {
+                ok: true,
+                output_type: output.clone(),
+                input_type: normalized_input.clone(),
+                content: None,
+                pdf_base64: None,
+                output_base64: Some(pdf::encode_base64(&bytes)),
+                output_mime: Some(output_mime(&output).to_string()),
+                cached: false,
+                warnings: Vec::new(),
+            }
+        }
+        "markdown" | "md" => {
+            // We always go HTML → pandoc → gfm-markdown. Lossy compared to
+            // round-tripping the original Markdown verbatim, but the upside
+            // is that enrichments (TOC, syntax-highlighted code, math) are
+            // already baked in, and every input type funnels through the
+            // same code path.
+            let md = pandoc::from_html_to_text("gfm", &document).await?;
+            ConvertResponse {
+                ok: true,
+                output_type: "markdown".to_string(),
+                input_type: normalized_input.clone(),
+                content: Some(md),
+                pdf_base64: None,
+                output_base64: None,
+                output_mime: Some(output_mime("markdown").to_string()),
+                cached: false,
+                warnings: Vec::new(),
+            }
+        }
+        other => return Err(ConvertError::UnsupportedOutput(other.to_string())),
+    };
+
+    // ---- cache insert ----
+    if CACHEABLE_OUTPUTS.contains(&output.as_str()) {
+        if let Some(cached) = response_to_cache_entry(&response) {
+            let mut cache = state.render_cache.lock().expect("render cache poisoned");
+            cache.insert(cache_key, cached);
+        }
+    }
+
+    Ok(response)
+}
+
+/// Translate a fresh `ConvertResponse` into the shape we store in the
+/// cache. Returns `None` for outputs that aren't worth caching (e.g. the
+/// content is empty).
+fn response_to_cache_entry(resp: &ConvertResponse) -> Option<CachedRender> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let mime = resp.output_mime.clone().unwrap_or_default();
+    if let Some(b64) = &resp.output_base64 {
+        let bytes = STANDARD.decode(b64).ok()?;
+        return Some(CachedRender {
+            bytes,
+            content_type: mime,
+            input_type: resp.input_type.clone(),
+        });
+    }
+    if let Some(text) = &resp.content {
+        return Some(CachedRender {
+            bytes: text.clone().into_bytes(),
+            content_type: mime,
+            input_type: resp.input_type.clone(),
+        });
+    }
+    None
+}
+
+/// Inverse of [`response_to_cache_entry`] — reconstruct a response from a
+/// cached entry. Sets `cached: true` so callers can tell on the wire.
+fn response_from_cached(output: &str, cached: &CachedRender, mark_cached: bool) -> ConvertResponse {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let is_binary = BINARY_OUTPUTS.contains(&output);
+    let mime = if cached.content_type.is_empty() {
+        output_mime(output).to_string()
+    } else {
+        cached.content_type.clone()
+    };
+    if is_binary {
+        let encoded = STANDARD.encode(&cached.bytes);
+        ConvertResponse {
+            ok: true,
+            output_type: output.to_string(),
+            input_type: cached.input_type.clone(),
+            content: None,
+            pdf_base64: if output == "pdf" {
+                Some(encoded.clone())
+            } else {
+                None
+            },
+            output_base64: Some(encoded),
+            output_mime: Some(mime),
+            cached: mark_cached,
+            warnings: Vec::new(),
+        }
+    } else {
+        ConvertResponse {
+            ok: true,
+            output_type: output.to_string(),
+            input_type: cached.input_type.clone(),
+            content: Some(String::from_utf8_lossy(&cached.bytes).into_owned()),
+            pdf_base64: None,
+            output_base64: None,
+            output_mime: Some(mime),
+            cached: mark_cached,
+            warnings: Vec::new(),
+        }
     }
 }
 

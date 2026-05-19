@@ -4,7 +4,8 @@ use sqlx::{FromRow, SqlitePool};
 use std::str::FromStr;
 
 use std::sync::Arc;
-use tokio::sync::Semaphore;
+
+use crate::render_cache::SharedRenderCache;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -12,7 +13,10 @@ pub struct AppState {
     pub admin_emails: Vec<String>,
     pub cookie_secure: bool,
     pub chromium_bin: String,
-    pub pdf_semaphore: Arc<Semaphore>,
+    /// Pool of pre-created Chromium user-data dirs. Acquiring a slot is
+    /// how concurrent renders are gated and how warm caches survive.
+    pub chromium_pool: Arc<crate::pdf::ChromiumSlotPool>,
+    pub render_cache: SharedRenderCache,
 }
 
 pub async fn connect(url: &str) -> Result<SqlitePool, sqlx::Error> {

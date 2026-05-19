@@ -24,7 +24,7 @@ Everything runs in Docker Compose behind Caddy.
 |-----------|-----------------------------------------------------------|-----------|-------------|------------|-------|--------------|
 | Anonymous | Markdown                                                  | HTML, PDF | 256 KB      | unmetered  | No    | —            |
 | Free      | Markdown                                                  | HTML, PDF | 256 KB      | 100        | Yes   | —            |
-| Premium   | + HTML, JSON, XML, CSV, Org-mode, AsciiDoc, RST, LaTeX    | HTML, PDF | 16 MB       | 10,000     | Yes   | 6 themes, custom CSS, templates, PDF page setup, cover/header/footer, page numbers, multi-file Markdown, table of contents, syntax highlighting, LaTeX math, Mermaid diagrams, API keys, batch conversion, signed webhooks, background jobs, version history + restore, shareable links, PDF→Markdown (OCR), AES-256-GCM at rest |
+| Premium   | + HTML, JSON, XML, CSV, Org-mode, AsciiDoc, RST, LaTeX    | HTML, PDF, DOCX, EPUB, ODT, PNG, JPG, Markdown | 16 MB       | 10,000     | Yes   | 6 themes, custom CSS, templates, PDF page setup, cover/header/footer, page numbers, PDF/A archival, multi-file Markdown, table of contents, syntax highlighting, LaTeX math, Mermaid diagrams, PDF toolkit (merge / split / compress / watermark / encrypt), API keys, batch conversion, signed webhooks, background jobs, version history + restore, shareable links, PDF→Markdown (OCR), AES-256-GCM at rest |
 | Admin     | All of the above + user role management + unlimited quota                                                                                                            |
 
 Subscriptions aren't built yet — for now an admin promotes accounts to
@@ -140,7 +140,19 @@ All endpoints accept/return JSON. Auth is via an HttpOnly session cookie
 - `POST /api/convert` `{ type, output, content, title?, theme?, custom_css?, pdf_options?, files?, template_id?, enrichments? }`
   - `type`: `markdown | html | json | xml | csv | org | asciidoc | rst | latex`
     (only `markdown` is available without premium)
-  - `output`: `html | pdf`
+  - `output`: `html | pdf | markdown | docx | epub | odt | png | jpg`
+    - **html** — returns the rendered document in `content`
+    - **pdf** — Chromium-rendered, returned in both `pdf_base64`
+      (legacy field) and `output_base64`
+    - **markdown** — pipes the rendered HTML through pandoc → GFM
+      Markdown; useful when you want enrichments (TOC, syntax-
+      highlighted code) baked into a Markdown export
+    - **docx / epub / odt** — pandoc-driven binary archives, returned
+      in `output_base64`
+    - **png / jpg** — single-page Chromium screenshot of the rendered
+      document at 1280 × 1600, returned in `output_base64`
+    - All binary outputs also set `output_mime` so clients can pick the
+      right download filename without hard-coding cases.
   - `theme`: `default` (free) or `clean | academic | resume | letter | github` (premium)
   - `custom_css`: arbitrary CSS string appended to the document (premium)
   - `pdf_options` (premium, applies when `output: "pdf"`):
@@ -160,7 +172,12 @@ All endpoints accept/return JSON. Auth is via an HttpOnly session cookie
     vendored at `rust-backend/vendor/mermaid.min.js` and inlined into the
     rendered document; Chromium runs it during PDF capture so no
     third-party network call is required.
-  - Returns `content` (HTML output) or `pdf_base64` (PDF output)
+  - Identical request/response shape regardless of `output`; just pick
+    the right field for the format (`content` for text outputs,
+    `output_base64` for binary ones).
+  - Responses set `cached: true` when served from the in-memory render
+    cache (keyed by every input that can change the output, including
+    the calling user so per-user image inlining stays sound).
   - Anonymous OK for Markdown with default theme and no premium features
 
 ### Batch conversion (premium)
@@ -221,6 +238,26 @@ after key derivation. Encrypted documents cannot be shared via public links.
   - `ocr`: `auto` (default — OCRs only when pdftotext is sparse), `force`, `off`
   - PDFs up to 16 MB; backed by `poppler-utils` + `tesseract-ocr-eng`
 
+### PDF toolkit (premium)
+Structural PDF manipulation via the bundled `qpdf` and `ghostscript`.
+Every endpoint takes the input PDF(s) as base64 and returns the result
+the same way (`{ pdf_base64, size_bytes }`); inputs are capped at 64 MiB
+each.
+- `POST /api/pdf/merge`     `{ files: [base64, …] }` — concatenate up to
+  50 PDFs in order
+- `POST /api/pdf/split`     `{ pdf_base64, pages }` — extract a 1-indexed
+  page range (e.g. `"1-3,7,9-z"`, where `z` means "last")
+- `POST /api/pdf/compress`  `{ pdf_base64, level? }` — re-stream through
+  ghostscript at `screen | ebook | printer | prepress` (default `ebook`)
+- `POST /api/pdf/watermark` `{ pdf_base64, text }` — stamp every page
+  with rotated translucent text; uses Chromium to render the overlay
+- `POST /api/pdf/encrypt`   `{ pdf_base64, user_password, owner_password? }`
+  — AES-256 password protection (when supported by the installed qpdf)
+
+`POST /api/convert` also gained `pdf_options.pdf_a: bool`, which
+post-processes the Chromium output through `gs -dPDFA=2` for archival-
+grade (ISO 19005-2) output. Adds ~1s per render.
+
 ### Images (auth required)
 Image storage for documents. The editor's drag-and-drop handler uses
 these endpoints; you can also call them directly to embed images into
@@ -252,6 +289,9 @@ page, so file://-based renders still see the bytes.
 ### Admin (admin role required)
 - `GET  /api/admin/users`              — list all users
 - `POST /api/admin/users/:id/role`     `{ role: "free" | "premium" | "admin" }`
+- `GET  /api/admin/cache`              — render-cache stats
+  (entries, total_bytes, max_bytes, hits, misses). Cap configurable via
+  `RENDER_CACHE_MAX_BYTES` env (default 128 MiB).
 
 ## Architecture notes
 
@@ -261,7 +301,11 @@ page, so file://-based renders still see the bytes.
   HttpOnly + SameSite=Lax (+ Secure once TLS is on). 30-day TTL.
 - **Passwords** are hashed with PBKDF2-HMAC-SHA256 (100k iterations) using a
   per-user 16-byte salt. Constant-time comparison via the `subtle` crate.
-- **PDF rendering** spawns local Chromium. No outbound network calls.
+- **PDF rendering** spawns local Chromium against a pool of pre-created
+  `--user-data-dir` slots so each render reuses the previous one's
+  font / shader / GPU caches (≈ 30% startup saved on cold paths). Size
+  is `CHROMIUM_POOL_SIZE` (default 5). The pool also gates concurrent
+  renders the same way the old semaphore did. No outbound network calls.
 - **Astro** is built to plain static HTML; React islands fetch from `/api`
   client-side. No SSR, no Node server in production.
 - **Caddy** terminates HTTP/HTTPS and reverse-proxies `/api/*` to the API

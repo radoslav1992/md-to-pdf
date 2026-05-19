@@ -54,6 +54,9 @@ export interface PdfOptions {
   header_template?: string;
   footer_template?: string;
   cover?: PdfCover;
+  /** When true, post-processes the PDF through ghostscript to emit
+   *  PDF/A-2b. Adds ~1s per render; useful for archival or compliance. */
+  pdf_a?: boolean;
 }
 
 export interface ConvertFile {
@@ -90,7 +93,7 @@ export interface ImageMeta {
 
 export interface ConvertPayload {
   type: string;
-  output: 'html' | 'pdf';
+  output: OutputType;
   content?: string;
   files?: ConvertFile[];
   title?: string;
@@ -158,7 +161,9 @@ export interface BatchPayload {
 export interface SaveDocumentPayload {
   title: string;
   type: string;
-  output: 'html' | 'pdf';
+  /** The user's chosen primary output mode. Stored as-is; informational
+   *  on the dashboard. New conversions can still target any format. */
+  output: OutputType;
   content: string;
   rendered_html?: string | null;
   theme?: string | null;
@@ -249,12 +254,32 @@ export interface ExtractResponse {
   page_count: number | null;
 }
 
+/** Every output the API can emit. Binary formats come back as base64. */
+export type OutputType =
+  | 'html'
+  | 'pdf'
+  | 'markdown'
+  | 'docx'
+  | 'epub'
+  | 'odt'
+  | 'png'
+  | 'jpg'
+  | 'jpeg';
+
 export interface ConvertResult {
   ok: boolean;
-  output_type: 'html' | 'pdf';
+  output_type: OutputType;
   input_type: string;
+  /** Set for `html` and `markdown` outputs. */
   content?: string;
+  /** Backward-compat alias; new clients should use `output_base64`. */
   pdf_base64?: string;
+  /** Set for any binary output (pdf, docx, epub, odt, png, jpg). */
+  output_base64?: string;
+  /** Content-Type matching `output_base64` or `content`. */
+  output_mime?: string;
+  /** `true` when the response was served from the in-memory render cache. */
+  cached?: boolean;
   warnings?: string[];
   error?: string;
 }
@@ -434,6 +459,35 @@ export const api = {
     request<ExtractResponse>('/api/extract', {
       method: 'POST',
       body: JSON.stringify(payload),
+    }),
+
+  pdfMerge: (files: string[]) =>
+    request<{ ok: true; pdf_base64: string; size_bytes: number }>('/api/pdf/merge', {
+      method: 'POST',
+      body: JSON.stringify({ files }),
+    }),
+  pdfSplit: (pdf_base64: string, pages: string) =>
+    request<{ ok: true; pdf_base64: string; size_bytes: number }>('/api/pdf/split', {
+      method: 'POST',
+      body: JSON.stringify({ pdf_base64, pages }),
+    }),
+  pdfCompress: (
+    pdf_base64: string,
+    level: 'screen' | 'ebook' | 'printer' | 'prepress',
+  ) =>
+    request<{ ok: true; pdf_base64: string; size_bytes: number }>('/api/pdf/compress', {
+      method: 'POST',
+      body: JSON.stringify({ pdf_base64, level }),
+    }),
+  pdfWatermark: (pdf_base64: string, text: string) =>
+    request<{ ok: true; pdf_base64: string; size_bytes: number }>('/api/pdf/watermark', {
+      method: 'POST',
+      body: JSON.stringify({ pdf_base64, text }),
+    }),
+  pdfEncrypt: (pdf_base64: string, user_password: string, owner_password?: string) =>
+    request<{ ok: true; pdf_base64: string; size_bytes: number }>('/api/pdf/encrypt', {
+      method: 'POST',
+      body: JSON.stringify({ pdf_base64, user_password, owner_password }),
     }),
 
   listImages: () =>

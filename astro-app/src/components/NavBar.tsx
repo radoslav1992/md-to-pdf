@@ -11,6 +11,7 @@ const TOOL_LINKS = [
   { href: '/templates', label: 'Templates', hint: 'Reusable styling bundles' },
   { href: '/jobs', label: 'Jobs', hint: 'Background conversions' },
   { href: '/extract', label: 'PDF → Markdown', hint: 'Reverse-direction OCR' },
+  { href: '/pdf-tools', label: 'PDF tools', hint: 'Merge, split, compress, watermark' },
   { href: '/api-keys', label: 'API keys', hint: 'Programmatic access' },
 ];
 

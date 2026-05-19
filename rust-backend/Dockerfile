@@ -31,8 +31,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation \
     fonts-dejavu-core \
     fonts-noto-color-emoji \
+    ghostscript \
     pandoc \
     poppler-utils \
+    qpdf \
     tesseract-ocr \
     tesseract-ocr-eng \
     tini \

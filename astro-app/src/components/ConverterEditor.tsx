@@ -4,6 +4,7 @@ import {
   readFileAsBase64,
   type ConvertResult,
   type EnrichmentOptions,
+  type OutputType,
   type PdfOptions,
   type Template,
 } from '../lib/api';
@@ -20,7 +21,30 @@ type InputType =
   | 'asciidoc'
   | 'rst'
   | 'latex';
-type OutputType = 'html' | 'pdf';
+
+const OUTPUT_OPTIONS: { value: OutputType; label: string; binary: boolean }[] = [
+  { value: 'html', label: 'HTML', binary: false },
+  { value: 'pdf', label: 'PDF', binary: true },
+  { value: 'markdown', label: 'Markdown', binary: false },
+  { value: 'docx', label: 'Word (.docx)', binary: true },
+  { value: 'epub', label: 'EPUB', binary: true },
+  { value: 'odt', label: 'ODT', binary: true },
+  { value: 'png', label: 'PNG image', binary: true },
+  { value: 'jpg', label: 'JPEG image', binary: true },
+];
+
+/** File extension a download should use for each output. */
+const OUTPUT_EXTENSION: Record<OutputType, string> = {
+  html: 'html',
+  pdf: 'pdf',
+  markdown: 'md',
+  docx: 'docx',
+  epub: 'epub',
+  odt: 'odt',
+  png: 'png',
+  jpg: 'jpg',
+  jpeg: 'jpg',
+};
 
 interface Props {
   /** When true, hide premium-only input formats from the picker. Defaults to false. */
@@ -248,10 +272,11 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
   );
 
   // Live preview: re-render on edits with a debounce so each keystroke
-  // doesn't trigger a request. Only runs for HTML output (PDF rendering is
-  // too expensive to do reactively) and when not blocked by the premium
-  // gate. Skipped while a manual conversion is in flight to avoid
-  // clobbering its result.
+  // doesn't trigger a request. Only runs for HTML output — every other
+  // format spawns a subprocess (Chromium or pandoc) and would be far too
+  // expensive to do reactively. Skipped while a manual conversion is in
+  // flight to avoid clobbering its result, and gated on premium where
+  // the picker would otherwise be locked out.
   useEffect(() => {
     if (!autoPreview) return;
     if (outputType !== 'html') return;
@@ -429,11 +454,36 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
   }, [result]);
 
   const pdfDataUrl = useMemo(() => {
-    if (result?.output_type === 'pdf' && result.pdf_base64) {
-      return `data:application/pdf;base64,${result.pdf_base64}`;
+    // PDFs preview inline in an iframe via a data: URI. The legacy
+    // `pdf_base64` field is kept by the server for backward compat.
+    if (result?.output_type === 'pdf' && (result.pdf_base64 || result.output_base64)) {
+      const b64 = result.pdf_base64 ?? result.output_base64;
+      return `data:application/pdf;base64,${b64}`;
     }
     return null;
   }, [result]);
+
+  /**
+   * Generic data: URL for any binary output (PNG/JPG inline preview, or
+   * the Download button for docx/epub/odt where no inline preview makes
+   * sense). Returns `null` for text outputs (html / markdown).
+   */
+  const binaryDataUrl = useMemo(() => {
+    if (!result?.output_base64) return null;
+    const mime = result.output_mime ?? 'application/octet-stream';
+    return `data:${mime};base64,${result.output_base64}`;
+  }, [result]);
+
+  const isImageOutput = result?.output_type === 'png'
+    || result?.output_type === 'jpg'
+    || result?.output_type === 'jpeg';
+
+  const downloadFilename = useMemo(() => {
+    if (!result) return null;
+    const safeName = (title || 'document').replace(/[^a-z0-9._-]+/gi, '_');
+    const ext = OUTPUT_EXTENSION[result.output_type] ?? 'bin';
+    return `${safeName}.${ext}`;
+  }, [result, title]);
 
   return (
     <div className="grid lg:grid-cols-2 gap-4">
@@ -495,8 +545,11 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
             onChange={(e) => setOutputType(e.target.value as OutputType)}
             className="border border-stone-300 rounded-md px-2 py-1 text-sm bg-white"
           >
-            <option value="html">HTML</option>
-            <option value="pdf">PDF</option>
+            {OUTPUT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
           </select>
 
           <div className="ml-auto flex items-center gap-2">
@@ -694,6 +747,14 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                   />
                   Page numbers (Chromium footer)
                 </label>
+                <label className="col-span-2 flex items-center gap-2 text-sm text-stone-700">
+                  <input
+                    type="checkbox"
+                    checked={pdfOptions.pdf_a ?? false}
+                    onChange={(e) => setPdfOptions({ ...pdfOptions, pdf_a: e.target.checked })}
+                  />
+                  PDF/A-2b (archival; ghostscript post-process)
+                </label>
                 <div className="col-span-2">
                   <label className="text-xs font-medium text-stone-700 block mb-1">
                     Header HTML (appears on every page)
@@ -886,6 +947,26 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
           )}
           {pdfDataUrl ? (
             <iframe title="PDF preview" src={pdfDataUrl} className="w-full h-full bg-white" />
+          ) : isImageOutput && binaryDataUrl ? (
+            <div className="w-full h-full bg-stone-50 flex items-center justify-center overflow-auto">
+              <img
+                src={binaryDataUrl}
+                alt="Rendered output"
+                className="max-w-full max-h-full object-contain"
+              />
+            </div>
+          ) : result?.output_type === 'markdown' && result.content ? (
+            <pre className="w-full h-full overflow-auto p-4 text-xs font-mono whitespace-pre-wrap bg-cream-50 text-stone-800">
+              {result.content}
+            </pre>
+          ) : result?.output_base64 ? (
+            <div className="p-4 text-sm text-stone-600 flex flex-col items-center justify-center h-full gap-3 text-center">
+              <div className="text-4xl">📦</div>
+              <p>
+                <strong>{result.output_type.toUpperCase()}</strong> rendered.
+                {' '}This format has no inline preview — download it to view.
+              </p>
+            </div>
           ) : result?.content ? (
             <iframe
               ref={previewRef}
@@ -902,14 +983,21 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
         </div>
         {result && (
           <div className="flex items-center justify-between text-xs text-stone-500">
-            <span>{result.output_type === 'pdf' ? 'PDF ready' : 'HTML ready'}</span>
-            {pdfDataUrl && (
+            <span>
+              {result.output_type.toUpperCase()} ready
+              {result.cached && (
+                <span className="ml-1.5 text-brand-600" title="Served from render cache">
+                  · cached
+                </span>
+              )}
+            </span>
+            {(binaryDataUrl || pdfDataUrl) && downloadFilename && (
               <a
-                href={pdfDataUrl}
-                download={`${(title || 'document').replace(/[^a-z0-9._-]+/gi, '_')}.pdf`}
+                href={binaryDataUrl ?? pdfDataUrl ?? '#'}
+                download={downloadFilename}
                 className="text-brand-600 hover:text-brand-700 underline"
               >
-                Download PDF
+                Download {result.output_type.toUpperCase()}
               </a>
             )}
             {savedId !== null && (
