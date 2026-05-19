@@ -24,11 +24,15 @@ Everything runs in Docker Compose behind Caddy.
 |-----------|-----------------------------------------------------------|-----------|-------------|------------|-------|--------------|
 | Anonymous | Markdown                                                  | HTML, PDF | 256 KB      | unmetered  | No    | —            |
 | Free      | Markdown                                                  | HTML, PDF | 256 KB      | 100        | Yes   | —            |
-| Premium   | + HTML, JSON, XML, CSV, Org-mode, AsciiDoc, RST, LaTeX    | HTML, PDF | 16 MB       | 10,000     | Yes   | 6 themes, custom CSS, templates, PDF page setup, cover/header/footer, page numbers, multi-file Markdown, table of contents, syntax highlighting, LaTeX math, API keys, batch conversion, signed webhooks, background jobs, version history + restore, shareable links, PDF→Markdown (OCR), AES-256-GCM at rest |
+| Premium   | + HTML, JSON, XML, CSV, Org-mode, AsciiDoc, RST, LaTeX    | HTML, PDF | 16 MB       | 10,000     | Yes   | 6 themes, custom CSS, templates, PDF page setup, cover/header/footer, page numbers, multi-file Markdown, table of contents, syntax highlighting, LaTeX math, Mermaid diagrams, API keys, batch conversion, signed webhooks, background jobs, version history + restore, shareable links, PDF→Markdown (OCR), AES-256-GCM at rest |
 | Admin     | All of the above + user role management + unlimited quota                                                                                                            |
 
 Subscriptions aren't built yet — for now an admin promotes accounts to
 `premium` manually from `/admin`.
+
+The editor offers live preview (debounced auto-render on edits) and
+drag-and-drop image upload for any signed-in user; both work without a
+premium account.
 
 ## Quick start on the Hetzner box (167.235.146.183)
 
@@ -150,9 +154,12 @@ All endpoints accept/return JSON. Auth is via an HttpOnly session cookie
     array order (premium; text formats only)
   - `template_id` (premium): expand the named template's theme / custom_css /
     pdf_options as defaults — request-level fields still override
-  - `enrichments` (premium): `{ toc?: bool, toc_depth?: 1..4, syntax_highlight?: bool, math?: bool }`
-    — auto-table of contents, server-side syntect highlighting, and LaTeX
-    math rendered to MathML
+  - `enrichments` (premium): `{ toc?: bool, toc_depth?: 1..4, syntax_highlight?: bool, math?: bool, mermaid?: bool }`
+    — auto-table of contents, server-side syntect highlighting, LaTeX
+    math rendered to MathML, and Mermaid diagrams. The Mermaid bundle is
+    vendored at `rust-backend/vendor/mermaid.min.js` and inlined into the
+    rendered document; Chromium runs it during PDF capture so no
+    third-party network call is required.
   - Returns `content` (HTML output) or `pdf_base64` (PDF output)
   - Anonymous OK for Markdown with default theme and no premium features
 
@@ -214,9 +221,30 @@ after key derivation. Encrypted documents cannot be shared via public links.
   - `ocr`: `auto` (default — OCRs only when pdftotext is sparse), `force`, `off`
   - PDFs up to 16 MB; backed by `poppler-utils` + `tesseract-ocr-eng`
 
+### Images (auth required)
+Image storage for documents. The editor's drag-and-drop handler uses
+these endpoints; you can also call them directly to embed images into
+Markdown via `![alt](/api/images/:id)`. For PDF output the URLs are
+rewritten to inline `data:` URIs by the server before Chromium loads the
+page, so file://-based renders still see the bytes.
+- `GET    /api/images`            — list your uploaded images
+- `POST   /api/images` `{ filename, content_type, data_base64 }` → `{ image }`
+  - PNG / JPEG / GIF / WebP / SVG, ≤10 MiB per file, ≤256 MiB per user.
+    Uploads are deduplicated per user by SHA-256.
+- `GET    /api/images/:id`        — serve the bytes (cookie or API key required)
+- `DELETE /api/images/:id`        — remove
+
 ### Documents (auth required)
-- `GET    /api/documents`        — list your saved documents
-- `POST   /api/documents`        — save `{ title, type, output, content, rendered_html?, theme?, custom_css?, pdf_options? }`
+- `GET    /api/documents?q=&folder=&tag=` — list your saved documents
+  - `q`: full-text search (FTS5 prefix-matched on title + content;
+    encrypted documents are matched on title only). Returns `items`,
+    plus `folders` and `tags` arrays for sidebar UIs.
+  - `folder`: exact folder match. Pass `?folder=` for top-level only.
+  - `tag`: single tag, case-insensitive.
+- `POST   /api/documents`        — save `{ title, type, output, content, rendered_html?, theme?, custom_css?, pdf_options?, folder?, tags? }`
+  - `folder`: free-form path (e.g. `"Work/Drafts"`, normalised to `/`)
+  - `tags`: array of short slugs; lowercased and deduplicated
+    (≤16 tags, ≤32 chars each)
 - `GET    /api/documents/:id`    — fetch one (only your own)
 - `PATCH  /api/documents/:id`    — update one (same body as POST)
 - `DELETE /api/documents/:id`    — delete one

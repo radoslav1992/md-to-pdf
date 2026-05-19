@@ -13,6 +13,8 @@ export interface DocumentSummary {
   input_type: string;
   output_type: string;
   is_encrypted: boolean;
+  folder: string | null;
+  tags: string[];
   created_at: number;
   updated_at: number;
 }
@@ -64,6 +66,26 @@ export interface EnrichmentOptions {
   toc_depth?: number;
   syntax_highlight?: boolean;
   math?: boolean;
+  mermaid?: boolean;
+}
+
+export interface ImageUploadResult {
+  id: number;
+  url: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  created_at: number;
+}
+
+export interface ImageMeta {
+  id: number;
+  user_id: number;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  sha256: string;
+  created_at: number;
 }
 
 export interface ConvertPayload {
@@ -143,6 +165,21 @@ export interface SaveDocumentPayload {
   custom_css?: string | null;
   pdf_options?: PdfOptions | null;
   encrypt_password?: string | null;
+  folder?: string | null;
+  tags?: string[] | null;
+}
+
+export interface DocumentListFilter {
+  q?: string;
+  folder?: string;
+  tag?: string;
+}
+
+export interface DocumentListResponse {
+  ok: true;
+  items: DocumentSummary[];
+  folders: string[];
+  tags: string[];
 }
 
 export interface DocumentVersionSummary {
@@ -268,8 +305,16 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  listDocuments: () =>
-    request<{ ok: true; items: DocumentSummary[] }>('/api/documents'),
+  listDocuments: (filter?: DocumentListFilter) => {
+    const qs = new URLSearchParams();
+    if (filter?.q) qs.set('q', filter.q);
+    if (filter?.folder !== undefined) qs.set('folder', filter.folder);
+    if (filter?.tag) qs.set('tag', filter.tag);
+    const suffix = qs.toString();
+    return request<DocumentListResponse>(
+      suffix ? `/api/documents?${suffix}` : '/api/documents',
+    );
+  },
   getDocument: (id: number) =>
     request<{ ok: true; document: SavedDocument }>(`/api/documents/${id}`),
   saveDocument: (payload: SaveDocumentPayload) =>
@@ -390,4 +435,32 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+
+  listImages: () =>
+    request<{ ok: true; items: ImageMeta[] }>('/api/images'),
+  uploadImage: (payload: { filename: string; content_type: string; data_base64: string }) =>
+    request<{ ok: true; image: ImageUploadResult }>('/api/images', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  deleteImage: (id: number) =>
+    request<{ ok: true }>(`/api/images/${id}`, { method: 'DELETE' }),
 };
+
+/**
+ * Read a File/Blob into a base64-encoded string with no `data:` prefix.
+ * Used by the editor's drag-and-drop handler before calling `uploadImage`.
+ */
+export function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // FileReader yields `data:<type>;base64,<payload>` — strip the prefix.
+      const comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}

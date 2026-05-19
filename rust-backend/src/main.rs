@@ -26,6 +26,7 @@ mod documents;
 mod enrichments;
 mod error;
 mod extract;
+mod images;
 mod jobs;
 mod pandoc;
 mod pdf;
@@ -138,6 +139,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/shares/{id}", axum::routing::delete(shares_revoke))
         .route("/api/share/{token}", get(share_meta).post(share_view))
         .route("/api/extract", post(extract_handler))
+        .route("/api/images", get(images_list).post(images_upload))
+        .route(
+            "/api/images/{id}",
+            get(images_serve).delete(images_delete),
+        )
         .route("/api/admin/users", get(admin_users))
         .route("/api/admin/users/{id}/role", post(admin_update_role))
         .fallback(not_found)
@@ -285,10 +291,15 @@ async fn batch_handler(
 async fn documents_list(
     State(state): State<AppState>,
     jar: CookieJar,
+    Query(filter): Query<documents::ListFilter>,
 ) -> Result<Json<serde_json::Value>, ConvertError> {
     let user = auth::require_user(&state, &jar).await?;
-    let items = documents::list(&state.pool, &user).await?;
-    Ok(Json(json!({ "ok": true, "items": items })))
+    let items = documents::list(&state.pool, &user, &filter).await?;
+    let folders = documents::list_folders(&state.pool, &user).await?;
+    let tags = documents::list_tags(&state.pool, &user).await?;
+    Ok(Json(
+        json!({ "ok": true, "items": items, "folders": folders, "tags": tags }),
+    ))
 }
 
 async fn documents_create(
@@ -654,7 +665,7 @@ async fn share_view(
     // Look up the document directly (we already have user_id on the link).
     let doc: Option<crate::db::Document> = sqlx::query_as(
         "SELECT id, user_id, title, input_type, output_type, content, rendered_html, \
-                theme, custom_css, pdf_options, is_encrypted, encryption_salt, created_at, updated_at \
+                theme, custom_css, pdf_options, is_encrypted, encryption_salt, folder, tags, created_at, updated_at \
          FROM documents WHERE id = ?1 AND user_id = ?2",
     )
     .bind(link.document_id)
@@ -689,6 +700,58 @@ async fn extract_handler(
     usage::reserve(&state.pool, &ctx.user, ctx.api_key_id, "extract", 1).await?;
     let res = extract::run(&payload).await?;
     Ok(Json(res))
+}
+
+// ---------- Images ----------
+
+async fn images_list(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    let items = images::list(&state.pool, &ctx.user).await?;
+    Ok(Json(json!({ "ok": true, "items": items })))
+}
+
+async fn images_upload(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Json(payload): Json<images::UploadImage>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    let res = images::upload(&state.pool, &ctx.user, &payload).await?;
+    Ok(Json(json!({ "ok": true, "image": res })))
+}
+
+async fn images_serve(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Response, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    let (meta, bytes) = images::fetch(&state.pool, &ctx.user, id).await?;
+    let resp = Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", meta.content_type)
+        .header("cache-control", "private, max-age=86400")
+        .header("content-length", bytes.len().to_string())
+        .body(Body::from(bytes))
+        .map_err(|e| ConvertError::Internal(format!("image response: {e}")))?;
+    Ok(resp)
+}
+
+async fn images_delete(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    images::delete(&state.pool, &ctx.user, id).await?;
+    Ok(Json(json!({ "ok": true })))
 }
 
 // ---------- Admin ----------

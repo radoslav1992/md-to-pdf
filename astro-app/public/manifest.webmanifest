@@ -1,0 +1,18 @@
+{
+  "name": "Universal Document Converter",
+  "short_name": "Converter",
+  "description": "Convert Markdown, HTML, JSON, CSV and more into beautifully styled documents — self-hosted, fast, joyful.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fffbf3",
+  "theme_color": "#fffbf3",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

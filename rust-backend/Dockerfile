@@ -18,6 +18,7 @@ RUN mkdir src && echo 'fn main() {}' > src/main.rs && \
 
 COPY src ./src
 COPY migrations ./migrations
+COPY vendor ./vendor
 RUN touch src/main.rs && cargo build --release --bin api
 
 # ---- runtime ----

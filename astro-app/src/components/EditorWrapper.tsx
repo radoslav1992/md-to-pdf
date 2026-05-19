@@ -14,6 +14,8 @@ export default function EditorWrapper() {
     theme?: string | null;
     custom_css?: string | null;
     pdf_options?: PdfOptions | null;
+    folder?: string | null;
+    tags?: string[] | null;
   } | null>(null);
 
   useEffect(() => {
@@ -44,6 +46,8 @@ export default function EditorWrapper() {
           theme: res.document.theme,
           custom_css: res.document.custom_css,
           pdf_options: parsedPdfOptions,
+          folder: res.document.folder,
+          tags: res.document.tags,
         });
       })
       .catch(err => {

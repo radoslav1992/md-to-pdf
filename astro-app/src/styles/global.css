@@ -8,9 +8,19 @@
     -webkit-font-smoothing: antialiased;
     color-scheme: light;
   }
+  html.dark {
+    color-scheme: dark;
+  }
   body {
     background: #fffbf3;
     color: #1c1917; /* stone-900 */
+  }
+  /* Dark palette is a charcoal close to stone-900 with a hint of warmth
+     so it still feels like the same product. Component styles below
+     pick this up via the `dark:` Tailwind variant where relevant. */
+  html.dark body {
+    background: #15171c;
+    color: #e7e5e4; /* stone-200 */
   }
   /* Slightly tighter, more confident headings — gives the warmth some bones. */
   h1, h2, h3 {
@@ -26,12 +36,17 @@
     background: theme('colors.brand.200');
     color: theme('colors.brand.900');
   }
+  html.dark ::selection {
+    background: theme('colors.brand.700');
+    color: theme('colors.brand.50');
+  }
 }
 
 @layer components {
   /* Card primitive used across dashboards, panels, list items. */
   .card {
-    @apply bg-white border border-stone-200/80 rounded-2xl shadow-soft;
+    @apply bg-white border border-stone-200/80 rounded-2xl shadow-soft
+           dark:bg-stone-900 dark:border-stone-800;
   }
   /* Subtle pill used for tags / metadata. */
   .pill {
@@ -51,7 +66,8 @@
     @apply btn bg-brand-600 hover:bg-brand-700 text-white shadow-soft px-4 py-2 text-sm;
   }
   .btn-secondary {
-    @apply btn bg-white hover:bg-stone-50 text-stone-800 border border-stone-200 px-4 py-2 text-sm;
+    @apply btn bg-white hover:bg-stone-50 text-stone-800 border border-stone-200 px-4 py-2 text-sm
+           dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border-stone-700;
   }
   .btn-peach {
     @apply btn bg-peach-500 hover:bg-peach-600 text-white shadow-peach px-4 py-2 text-sm;
@@ -64,7 +80,8 @@
   .input {
     @apply w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white
            placeholder:text-stone-400 transition
-           focus:border-brand-400 focus:ring-2 focus:ring-brand-400/30 focus:outline-none;
+           focus:border-brand-400 focus:ring-2 focus:ring-brand-400/30 focus:outline-none
+           dark:bg-stone-800 dark:border-stone-700 dark:text-stone-100 dark:placeholder:text-stone-500;
   }
   .select { @apply input pr-8 appearance-none bg-no-repeat bg-[length:0.6em] bg-[right_0.75rem_center]; }
   .textarea { @apply input; }

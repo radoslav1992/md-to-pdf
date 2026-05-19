@@ -1,6 +1,9 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./src/**/*.{astro,html,js,jsx,md,mdx,ts,tsx}'],
+  // Class-based dark mode so the toggle in the navbar can flip it without
+  // depending on the OS preference at first paint.
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
