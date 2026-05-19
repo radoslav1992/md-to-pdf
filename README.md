@@ -140,6 +140,38 @@ Every endpoint is reachable at two paths:
 Future breaking changes will land at `/api/v2/...` without disturbing
 v1. New clients should always prefer the explicit version.
 
+### Ops
+
+- `GET /api/v1/healthz` — pure liveness probe; always 200.
+- `GET /api/v1/readyz`  — readiness probe; pings the DB and checks the
+  Chromium binary. Returns 503 when the DB is unreachable. Chromium
+  absence is reported as a soft warning, not a hard fail.
+- `GET /api/v1/metrics` — Prometheus text-format scrape: request /
+  response counters, a `udc_request_duration_seconds` histogram, and
+  gauges for DB pool size, active URL watches, queued/running jobs,
+  rate-limit buckets, and uptime.
+- `GET /api/v1/admin/backup` — streams a consistent SQLite snapshot
+  via `VACUUM INTO` (works while the API is live, because the DB is
+  in WAL mode). Filename includes a UTC timestamp. Available in the
+  admin UI as a "Download backup" button. **Restore is an operator
+  action**: stop the containers, drop the file into
+  `/data/converter.db`, restart.
+- `GET /api/v1/jobs/{id}/events` — Server-Sent Events stream for one
+  job. Emits the initial state, one event per status change, and
+  closes on `done/failed/canceled` (or after 30 min, whichever comes
+  first). The editor's Jobs panel subscribes automatically when a
+  running job is selected so its status updates in real time.
+
+These three paths plus `/health`, `/openapi.yaml`, and `/openapi.json`
+bypass the rate limiter so monitors and Prometheus scrapes never get
+throttled.
+
+Every response carries an `X-Request-Id` header. Inbound
+`X-Request-Id` values (set by a reverse proxy) are honoured if
+present, capped at 128 chars; otherwise the server generates a v4
+UUID. Set `RUST_LOG_FORMAT=json` to get one-line JSON log records
+suitable for Loki / Grafana / CloudWatch / Datadog ingestion.
+
 ### OpenAPI & Docs
 
 - `GET /api/v1/openapi.yaml` — the hand-written OpenAPI 3.1 spec
@@ -432,6 +464,25 @@ repo workflow alongside the secrets and it will install the `udc` CLI
 
 ## Tests
 
+Backend (Rust):
+
 ```sh
 cd rust-backend && cargo test
+# or, from the repo root:
+cargo test --workspace
 ```
+
+End-to-end (Playwright). The config in `playwright.config.ts` spins
+up both the Astro dev server and the Rust API, then runs the suite in
+`e2e/` against Chromium. Tests cover the homepage, anonymous Markdown
+→ HTML conversion via the live API, and the signup flow.
+
+```sh
+npm install                         # if you haven't yet
+npm run test:e2e:install            # one-time Chromium download
+npm run test:e2e                    # full golden-path suite
+```
+
+The suite is deliberately small — three golden-path tests that block
+regressions on the routes a brand-new visitor is most likely to hit.
+Add new specs under `e2e/*.spec.ts`.

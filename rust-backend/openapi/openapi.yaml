@@ -36,6 +36,7 @@ security:
   - {}  # anonymous OK for some endpoints — they note it explicitly
 
 tags:
+  - name: Ops
   - name: Auth
   - name: Conversion
   - name: Documents
@@ -54,8 +55,8 @@ tags:
 paths:
   /health:
     get:
-      tags: [Auth]
-      summary: Liveness probe
+      tags: [Ops]
+      summary: Service info (always 200; includes name + version)
       security: []
       responses:
         '200':
@@ -68,6 +69,46 @@ paths:
                   ok: { type: boolean }
                   service: { type: string }
                   version: { type: string }
+
+  /healthz:
+    get:
+      tags: [Ops]
+      summary: Liveness probe (always 200 while the process can answer)
+      security: []
+      responses:
+        '200': { description: Alive }
+
+  /readyz:
+    get:
+      tags: [Ops]
+      summary: Readiness probe — checks DB connectivity + Chromium binary
+      description: |
+        Returns `503` if a hard dependency (DB) is unhealthy so a load
+        balancer can route around the instance. A missing Chromium
+        binary is a soft warning, not a 503.
+      security: []
+      responses:
+        '200': { description: Ready }
+        '503': { description: Not ready }
+
+  /metrics:
+    get:
+      tags: [Ops]
+      summary: Prometheus text-format metrics
+      security: []
+      description: |
+        Counters (`udc_requests_total`, `udc_rate_limited_total`,
+        `udc_conversions_total`, …), the
+        `udc_request_duration_seconds` histogram, runtime gauges
+        (`udc_db_pool_size`, `udc_jobs_queued/running`,
+        `udc_url_watches_active`, `udc_rate_limit_buckets`), and an
+        `udc_uptime_seconds` gauge.
+      responses:
+        '200':
+          description: Text-format metrics body
+          content:
+            text/plain:
+              schema: { type: string }
 
   /auth/signup:
     post:
@@ -650,6 +691,25 @@ paths:
                   ok: { type: boolean }
                   job: { $ref: '#/components/schemas/Job' }
 
+  /jobs/{id}/events:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Jobs]
+      summary: Server-Sent Events stream of status changes for one job
+      description: |
+        Emits an initial `status` event with the current job, then one
+        per change, and closes on `done | failed | canceled`. Idle
+        connections get a `:` keep-alive every 15 seconds. A 30-minute
+        cap means even a stuck job won't hold the connection forever
+        — the client should reconnect or fall back to `GET /jobs/{id}`.
+      responses:
+        '200':
+          description: text/event-stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+
   /jobs/{id}/cancel:
     parameters:
       - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
@@ -812,6 +872,25 @@ paths:
       summary: Delete an image
       responses:
         '200': { description: Deleted }
+
+  /admin/backup:
+    get:
+      tags: [Admin]
+      summary: Download a consistent SQLite snapshot (admin)
+      description: |
+        Runs `VACUUM INTO` against a fresh temp file (works even when
+        the DB is in WAL mode) and streams the resulting bytes as
+        `application/vnd.sqlite3`. The filename includes a UTC
+        timestamp like `udc-backup-20260519-194500.db`. The snapshot
+        is unlinked from disk before the response body is finished.
+        **Restore is an operator action**: stop the containers, drop
+        the file into the data volume, restart.
+      responses:
+        '200':
+          description: SQLite backup bytes
+          content:
+            application/vnd.sqlite3:
+              schema: { type: string, format: binary }
 
   /admin/users:
     get:

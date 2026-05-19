@@ -1,18 +1,31 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import AdminUserList from '../components/AdminUserList.tsx';
+import AdminBackup from '../components/AdminBackup.tsx';
 ---
 
 <BaseLayout title="Admin — Universal Document Converter">
-  <section class="max-w-6xl mx-auto px-4 py-10">
-    <div class="mb-6">
-      <span class="pill-peach">Admin</span>
-      <h1 class="mt-2 text-3xl font-bold tracking-tight text-stone-900">Users</h1>
-      <p class="mt-2 text-stone-600">
-        Promote users to <strong>premium</strong> manually. Subscriptions will replace this flow
-        later.
-      </p>
+  <section class="max-w-6xl mx-auto px-4 py-10 space-y-12">
+    <div>
+      <div class="mb-6">
+        <span class="pill-peach">Admin</span>
+        <h1 class="mt-2 text-3xl font-bold tracking-tight text-stone-900">Users</h1>
+        <p class="mt-2 text-stone-600">
+          Promote users to <strong>premium</strong> manually. Subscriptions will replace this flow
+          later.
+        </p>
+      </div>
+      <AdminUserList client:load />
     </div>
-    <AdminUserList client:load />
+
+    <div>
+      <h2 class="text-2xl font-bold tracking-tight text-stone-900">Backups</h2>
+      <p class="mt-2 text-stone-600">
+        Download a consistent SQLite snapshot for off-host storage.
+      </p>
+      <div class="mt-4">
+        <AdminBackup client:load />
+      </div>
+    </div>
   </section>
 </BaseLayout>

@@ -5,6 +5,7 @@ use std::str::FromStr;
 
 use std::sync::Arc;
 
+use crate::metrics::SharedMetrics;
 use crate::rate_limit::SharedRateLimiter;
 use crate::render_cache::SharedRenderCache;
 
@@ -22,6 +23,10 @@ pub struct AppState {
     /// `rate_limit_middleware` on the `/api/...` and `/api/v1/...`
     /// router stacks.
     pub rate_limiter: SharedRateLimiter,
+    /// In-process metrics, exported at `/metrics`. The same `Arc` is
+    /// shared by every handler, the request-timing middleware, and
+    /// background workers.
+    pub metrics: SharedMetrics,
 }
 
 pub async fn connect(url: &str) -> Result<SqlitePool, sqlx::Error> {
