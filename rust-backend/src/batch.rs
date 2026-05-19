@@ -17,14 +17,14 @@ use crate::error::ConvertError;
 
 const MAX_ITEMS: usize = 50;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct BatchRequest {
     pub items: Vec<ConvertRequest>,
     #[serde(default)]
     pub webhook: Option<WebhookConfig>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct WebhookConfig {
     pub url: String,
     /// Shared secret. The server signs the JSON payload with HMAC-SHA-256

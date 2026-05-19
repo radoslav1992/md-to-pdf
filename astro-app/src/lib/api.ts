@@ -140,6 +140,74 @@ export interface SaveDocumentPayload {
   theme?: string | null;
   custom_css?: string | null;
   pdf_options?: PdfOptions | null;
+  encrypt_password?: string | null;
+}
+
+export interface DocumentVersionSummary {
+  id: number;
+  document_id: number;
+  version: number;
+  title: string;
+  content_bytes: number;
+  created_at: number;
+}
+
+export interface DocumentVersion extends DocumentVersionSummary {
+  input_type: string;
+  output_type: string;
+  content: string;
+  rendered_html: string | null;
+  theme: string | null;
+  custom_css: string | null;
+  pdf_options: string | null;
+}
+
+export interface ShareLink {
+  id: number;
+  document_id: number;
+  user_id: number;
+  prefix: string;
+  format: 'html' | 'pdf';
+  expires_at: number | null;
+  view_count: number;
+  created_at: number;
+}
+
+export interface ShareMeta {
+  ok: true;
+  format: 'html' | 'pdf';
+  requires_password: boolean;
+  expires_at: number | null;
+}
+
+export interface ShareView {
+  ok: true;
+  title: string;
+  format: 'html' | 'pdf';
+  rendered_html: string | null;
+}
+
+export interface JobView {
+  id: number;
+  kind: 'convert' | 'batch';
+  status: 'queued' | 'running' | 'done' | 'failed' | 'canceled';
+  error_message: string | null;
+  result: unknown;
+  created_at: number;
+  started_at: number | null;
+  finished_at: number | null;
+}
+
+export interface ExtractRequest {
+  pdf_base64: string;
+  ocr?: 'auto' | 'force' | 'off';
+}
+
+export interface ExtractResponse {
+  ok: boolean;
+  method: 'pdftotext' | 'ocr';
+  markdown: string;
+  page_count: number | null;
 }
 
 export interface ConvertResult {
@@ -252,6 +320,71 @@ export const api = {
 
   batchConvert: (payload: BatchPayload) =>
     request<BatchResponse>('/api/convert/batch', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  listVersions: (documentId: number) =>
+    request<{ ok: true; items: DocumentVersionSummary[] }>(
+      `/api/documents/${documentId}/versions`,
+    ),
+  getVersion: (documentId: number, versionId: number) =>
+    request<{ ok: true; version: DocumentVersion }>(
+      `/api/documents/${documentId}/versions/${versionId}`,
+    ),
+  restoreVersion: (documentId: number, versionId: number) =>
+    request<{ ok: true; document: SavedDocument }>(
+      `/api/documents/${documentId}/versions/${versionId}/restore`,
+      { method: 'POST' },
+    ),
+
+  decryptDocument: (documentId: number, password: string) =>
+    request<{ ok: true; content: string }>(
+      `/api/documents/${documentId}/decrypt`,
+      { method: 'POST', body: JSON.stringify({ password }) },
+    ),
+
+  listShares: (documentId: number) =>
+    request<{ ok: true; items: ShareLink[] }>(`/api/documents/${documentId}/shares`),
+  createShare: (
+    documentId: number,
+    payload: {
+      format: 'html' | 'pdf';
+      expires_in_seconds?: number | null;
+      password?: string | null;
+    },
+  ) =>
+    request<{ ok: true; share: ShareLink; url: string; token: string }>(
+      `/api/documents/${documentId}/shares`,
+      { method: 'POST', body: JSON.stringify(payload) },
+    ),
+  revokeShare: (id: number) =>
+    request<{ ok: true }>(`/api/shares/${id}`, { method: 'DELETE' }),
+
+  shareMeta: (token: string) => request<ShareMeta>(`/api/share/${token}`),
+  shareView: (token: string, password?: string) =>
+    request<ShareView>(`/api/share/${token}`, {
+      method: 'POST',
+      body: JSON.stringify({ password: password ?? null }),
+    }),
+
+  listJobs: () => request<{ ok: true; items: JobView[] }>('/api/jobs'),
+  getJob: (id: number) => request<{ ok: true; job: JobView }>(`/api/jobs/${id}`),
+  cancelJob: (id: number) =>
+    request<{ ok: true }>(`/api/jobs/${id}/cancel`, { method: 'POST' }),
+  enqueueConvertJob: (payload: ConvertPayload) =>
+    request<{ ok: true; job_id: number; status: string }>('/api/jobs/convert', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  enqueueBatchJob: (payload: BatchPayload) =>
+    request<{ ok: true; job_id: number; status: string }>('/api/jobs/batch', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  extract: (payload: ExtractRequest) =>
+    request<ExtractResponse>('/api/extract', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),

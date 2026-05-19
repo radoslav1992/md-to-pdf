@@ -7,6 +7,7 @@ import {
   type Template,
 } from '../lib/api';
 import { useUser } from '../lib/useUser';
+import DocumentSidebar from './DocumentSidebar';
 
 type InputType =
   | 'markdown'
@@ -139,10 +140,13 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
   });
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templateId, setTemplateId] = useState<number | null>(null);
+  const [encryptEnabled, setEncryptEnabled] = useState<boolean>(false);
+  const [encryptPassword, setEncryptPassword] = useState<string>('');
   const [result, setResult] = useState<ConvertResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedId, setSavedId] = useState<number | null>(initialData?.id ?? null);
+  const [sidebarKey, setSidebarKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
@@ -230,6 +234,7 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
     setError(null);
     setInfo(null);
     try {
+      const wantEncrypt = isPremium && encryptEnabled && encryptPassword.trim().length >= 8;
       const payload = {
         title: title.trim() || 'Untitled',
         type: inputType,
@@ -239,10 +244,12 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
         theme: isPremium ? theme : null,
         custom_css: isPremium && customCss.trim() ? customCss : null,
         pdf_options: isPremium && outputType === 'pdf' ? pdfOptions : null,
+        encrypt_password: wantEncrypt ? encryptPassword : null,
       };
       if (savedId) {
         const res = await api.updateDocument(savedId, payload);
         setInfo(`Updated document #${res.document.id}.`);
+        setSidebarKey((k) => k + 1);
       } else {
         const res = await api.saveDocument(payload);
         setSavedId(res.document.id);
@@ -265,6 +272,8 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
     theme,
     customCss,
     pdfOptions,
+    encryptEnabled,
+    encryptPassword,
   ]);
 
   const previewSrcDoc = useMemo(() => {
@@ -606,6 +615,29 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                 className="w-full h-24 font-mono text-xs border border-slate-300 rounded-md p-2 bg-white"
               />
             </div>
+
+            <div className="mt-3 border-t border-slate-200 pt-3">
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={encryptEnabled}
+                  onChange={(e) => setEncryptEnabled(e.target.checked)}
+                />
+                Encrypt at rest (AES-256-GCM, password-only recovery)
+              </label>
+              {encryptEnabled && (
+                <input
+                  type="password"
+                  value={encryptPassword}
+                  onChange={(e) => setEncryptPassword(e.target.value)}
+                  placeholder="Document password (8+ chars) — store this safely; we can't recover it"
+                  className="mt-2 w-full border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                />
+              )}
+              {encryptEnabled && encryptPassword.length > 0 && encryptPassword.length < 8 && (
+                <p className="mt-1 text-xs text-amber-700">Password must be at least 8 characters.</p>
+              )}
+            </div>
           </div>
         </details>
 
@@ -664,6 +696,23 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
               </a>
             )}
           </div>
+        )}
+
+        {!anonymousMode && savedId !== null && (
+          <DocumentSidebar
+            key={`${savedId}-${sidebarKey}`}
+            documentId={savedId}
+            isPremium={isPremium}
+            onRestored={() => {
+              // Reload the document content from the server.
+              void api.getDocument(savedId).then((res) => {
+                setContent(res.document.content);
+                setTitle(res.document.title);
+                setResult(null);
+                setSidebarKey((k) => k + 1);
+              });
+            }}
+          />
         )}
       </div>
     </div>
