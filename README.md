@@ -24,7 +24,7 @@ Everything runs in Docker Compose behind Caddy.
 |-----------|-----------------------------------------------------------|-----------|-------------|------------|-------|--------------|
 | Anonymous | Markdown                                                  | HTML, PDF | 256 KB      | unmetered  | No    | —            |
 | Free      | Markdown                                                  | HTML, PDF | 256 KB      | 100        | Yes   | —            |
-| Premium   | + HTML, JSON, XML, CSV, Org-mode, AsciiDoc, RST, LaTeX    | HTML, PDF | 16 MB       | 10,000     | Yes   | 6 themes, custom CSS, templates, PDF page setup, cover/header/footer, page numbers, multi-file Markdown, table of contents, syntax highlighting, LaTeX math, API keys, batch conversion, signed webhooks |
+| Premium   | + HTML, JSON, XML, CSV, Org-mode, AsciiDoc, RST, LaTeX    | HTML, PDF | 16 MB       | 10,000     | Yes   | 6 themes, custom CSS, templates, PDF page setup, cover/header/footer, page numbers, multi-file Markdown, table of contents, syntax highlighting, LaTeX math, API keys, batch conversion, signed webhooks, background jobs, version history + restore, shareable links, PDF→Markdown (OCR), AES-256-GCM at rest |
 | Admin     | All of the above + user role management + unlimited quota                                                                                                            |
 
 Subscriptions aren't built yet — for now an admin promotes accounts to
@@ -179,6 +179,40 @@ All endpoints accept/return JSON. Auth is via an HttpOnly session cookie
 
 ### Usage
 - `GET /api/usage` → `{ used, limit, period_start }` — rolling 30-day window
+
+### Async jobs (premium)
+- `POST /api/jobs/convert` — same body as `/api/convert`, returns `{ job_id, status }`
+- `POST /api/jobs/batch`   — same body as `/api/convert/batch`, returns `{ job_id, status }`
+- `GET  /api/jobs`         — list your jobs (newest first, up to 100)
+- `GET  /api/jobs/:id`     — poll for status/result; `status` cycles
+  `queued → running → done` (or `failed` / `canceled`)
+- `POST /api/jobs/:id/cancel` — cancel a queued job
+
+### Document versions
+- `GET  /api/documents/:id/versions`        — list (up to 50, oldest pruned)
+- `GET  /api/documents/:id/versions/:vid`   — fetch full content of one version
+- `POST /api/documents/:id/versions/:vid/restore` — apply a version onto the
+  document, snapshotting the current state first
+
+### Encrypted documents (premium)
+Pass `encrypt_password: "..."` (≥8 chars) when saving or updating a document.
+The body is AES-256-GCM encrypted under a key derived from the password
+(PBKDF2-HMAC-SHA-256, 200k iterations). The server discards the password
+after key derivation. Encrypted documents cannot be shared via public links.
+- `POST /api/documents/:id/decrypt` `{ password }` → `{ content }`
+
+### Shareable links (premium)
+- `POST /api/documents/:id/shares` `{ format, expires_in_seconds?, password? }`
+  → `{ share, url, token }` — **the token is shown once**
+- `GET  /api/documents/:id/shares` — list active shares for a doc
+- `DELETE /api/shares/:id` — revoke
+- `GET  /api/share/:token` — public, returns `{ format, requires_password, expires_at }`
+- `POST /api/share/:token` `{ password? }` → the rendered document
+
+### PDF → Markdown (premium)
+- `POST /api/extract` `{ pdf_base64, ocr? }` → `{ markdown, method, page_count }`
+  - `ocr`: `auto` (default — OCRs only when pdftotext is sparse), `force`, `off`
+  - PDFs up to 16 MB; backed by `poppler-utils` + `tesseract-ocr-eng`
 
 ### Documents (auth required)
 - `GET    /api/documents`        — list your saved documents

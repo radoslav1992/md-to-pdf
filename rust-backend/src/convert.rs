@@ -20,7 +20,7 @@ const ALL_INPUTS: &[&str] = &[
     "tex",
 ];
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ConvertFile {
     /// Filename within the bundle. Currently informational only — files are
     /// concatenated in the order they appear in the array.
@@ -29,7 +29,7 @@ pub struct ConvertFile {
     pub content: String,
 }
 
-#[derive(Debug, Deserialize, Default, Clone)]
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct PdfMargin {
     pub top: Option<String>,
     pub right: Option<String>,
@@ -37,7 +37,7 @@ pub struct PdfMargin {
     pub left: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Default, Clone)]
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct PdfCover {
     pub title: Option<String>,
     pub subtitle: Option<String>,
@@ -46,7 +46,7 @@ pub struct PdfCover {
 }
 
 /// Page-setup controls for the PDF output. All fields are optional.
-#[derive(Debug, Deserialize, Default, Clone)]
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct PdfOptions {
     pub page_size: Option<String>,
     pub orientation: Option<String>,
@@ -57,7 +57,7 @@ pub struct PdfOptions {
     pub cover: Option<PdfCover>,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct EnrichmentOptions {
     #[serde(default)]
     pub toc: bool,
@@ -75,7 +75,7 @@ impl EnrichmentOptions {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ConvertRequest {
     #[serde(rename = "type")]
     pub input_type: String,

@@ -31,6 +31,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-dejavu-core \
     fonts-noto-color-emoji \
     pandoc \
+    poppler-utils \
+    tesseract-ocr \
+    tesseract-ocr-eng \
     tini \
     && rm -rf /var/lib/apt/lists/*
 

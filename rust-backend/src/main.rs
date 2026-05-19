@@ -20,11 +20,16 @@ mod batch;
 mod convert;
 mod crypto;
 mod db;
+mod doc_crypto;
+mod document_versions;
 mod documents;
 mod enrichments;
 mod error;
+mod extract;
+mod jobs;
 mod pandoc;
 mod pdf;
+mod shares;
 mod templates;
 mod themes;
 mod usage;
@@ -70,6 +75,16 @@ async fn main() -> anyhow::Result<()> {
         pdf_semaphore: std::sync::Arc::new(tokio::sync::Semaphore::new(5)),
     };
 
+    // Spawn the background job worker. One worker is enough on the
+    // CX23-class hardware this is sized for; bump the PDF semaphore if you
+    // need more parallel renders.
+    {
+        let worker_state = std::sync::Arc::new(state.clone());
+        tokio::spawn(async move {
+            jobs::run_worker(worker_state).await;
+        });
+    }
+
     let app = Router::new()
         .route("/api/health", get(health))
         .route("/api/auth/signup", post(signup))
@@ -98,6 +113,31 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/keys", get(keys_list).post(keys_create))
         .route("/api/keys/{id}", axum::routing::delete(keys_revoke))
         .route("/api/usage", get(usage_handler))
+        .route("/api/jobs", get(jobs_list))
+        .route("/api/jobs/convert", post(jobs_enqueue_convert))
+        .route("/api/jobs/batch", post(jobs_enqueue_batch))
+        .route("/api/jobs/{id}", get(jobs_get))
+        .route("/api/jobs/{id}/cancel", post(jobs_cancel))
+        .route(
+            "/api/documents/{id}/versions",
+            get(document_versions_list),
+        )
+        .route(
+            "/api/documents/{id}/versions/{vid}",
+            get(document_versions_get),
+        )
+        .route(
+            "/api/documents/{id}/versions/{vid}/restore",
+            post(document_versions_restore),
+        )
+        .route("/api/documents/{id}/decrypt", post(documents_decrypt))
+        .route(
+            "/api/documents/{id}/shares",
+            get(shares_list).post(shares_create),
+        )
+        .route("/api/shares/{id}", axum::routing::delete(shares_revoke))
+        .route("/api/share/{token}", get(share_meta).post(share_view))
+        .route("/api/extract", post(extract_handler))
         .route("/api/admin/users", get(admin_users))
         .route("/api/admin/users/{id}/role", post(admin_update_role))
         .fallback(not_found)
@@ -417,6 +457,238 @@ async fn usage_handler(
     let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
     let summary = usage::summary(&state.pool, &ctx.user).await?;
     Ok(Json(json!({ "ok": true, "usage": summary })))
+}
+
+// ---------- Jobs ----------
+
+async fn jobs_list(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    let items = jobs::list(&state.pool, &ctx.user).await?;
+    Ok(Json(json!({ "ok": true, "items": items })))
+}
+
+async fn jobs_get(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    let job = jobs::get(&state.pool, &ctx.user, id).await?;
+    Ok(Json(json!({ "ok": true, "job": job })))
+}
+
+async fn jobs_cancel(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    jobs::cancel(&state.pool, &ctx.user, id).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn jobs_enqueue_convert(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Json(body): Json<convert::ConvertRequest>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    usage::reserve(&state.pool, &ctx.user, ctx.api_key_id, "convert", 1).await?;
+    let job = jobs::enqueue_convert(&state.pool, &ctx.user, ctx.api_key_id, &body).await?;
+    Ok(Json(json!({ "ok": true, "job_id": job.id, "status": job.status })))
+}
+
+async fn jobs_enqueue_batch(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Json(body): Json<batch::BatchRequest>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    batch::validate(&body)?;
+    usage::reserve(
+        &state.pool,
+        &ctx.user,
+        ctx.api_key_id,
+        "batch",
+        body.items.len() as i64,
+    )
+    .await?;
+    let job = jobs::enqueue_batch(&state.pool, &ctx.user, ctx.api_key_id, &body).await?;
+    Ok(Json(json!({ "ok": true, "job_id": job.id, "status": job.status })))
+}
+
+// ---------- Document versions ----------
+
+async fn document_versions_list(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    let items = document_versions::list(&state.pool, &ctx.user, id).await?;
+    Ok(Json(json!({ "ok": true, "items": items })))
+}
+
+async fn document_versions_get(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path((id, vid)): Path<(i64, i64)>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    let version = document_versions::get(&state.pool, &ctx.user, id, vid).await?;
+    Ok(Json(json!({ "ok": true, "version": version })))
+}
+
+async fn document_versions_restore(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path((id, vid)): Path<(i64, i64)>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    let doc = documents::restore_version(&state.pool, &ctx.user, id, vid).await?;
+    Ok(Json(json!({ "ok": true, "document": doc })))
+}
+
+// ---------- Encrypted documents ----------
+
+#[derive(Debug, Deserialize)]
+struct DecryptRequest {
+    password: String,
+}
+
+async fn documents_decrypt(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+    Json(payload): Json<DecryptRequest>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    let plaintext = documents::decrypt_content(&state.pool, &ctx.user, id, &payload.password).await?;
+    Ok(Json(json!({ "ok": true, "content": plaintext })))
+}
+
+// ---------- Shares ----------
+
+async fn shares_list(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    let items = shares::list_for_document(&state.pool, &ctx.user, id).await?;
+    Ok(Json(json!({ "ok": true, "items": items })))
+}
+
+async fn shares_create(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+    Json(payload): Json<shares::CreateShare>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    let (link, plaintext) = shares::create(&state.pool, &ctx.user, id, &payload).await?;
+    Ok(Json(json!({
+        "ok": true,
+        "share": link,
+        "url": format!("/s/{plaintext}"),
+        "token": plaintext,
+    })))
+}
+
+async fn shares_revoke(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    shares::revoke(&state.pool, &ctx.user, id).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn share_meta(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let link = shares::lookup(&state.pool, &token).await?;
+    Ok(Json(json!({
+        "ok": true,
+        "format": link.format,
+        "requires_password": link.requires_password(),
+        "expires_at": link.expires_at,
+    })))
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ShareViewRequest {
+    #[serde(default)]
+    password: Option<String>,
+}
+
+async fn share_view(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+    body: Option<Json<ShareViewRequest>>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let payload = body.map(|Json(b)| b).unwrap_or_default();
+    let link = shares::lookup(&state.pool, &token).await?;
+    shares::verify_password(&link, payload.password.as_deref())?;
+    // Look up the document directly (we already have user_id on the link).
+    let doc: Option<crate::db::Document> = sqlx::query_as(
+        "SELECT id, user_id, title, input_type, output_type, content, rendered_html, \
+                theme, custom_css, pdf_options, is_encrypted, encryption_salt, created_at, updated_at \
+         FROM documents WHERE id = ?1 AND user_id = ?2",
+    )
+    .bind(link.document_id)
+    .bind(link.user_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let doc = doc.ok_or(ConvertError::NotFound)?;
+    if doc.is_encrypted != 0 {
+        return Err(ConvertError::BadRequest(
+            "encrypted documents cannot be shared via public link".into(),
+        ));
+    }
+    shares::bump_view_count(&state.pool, link.id).await;
+    Ok(Json(json!({
+        "ok": true,
+        "title": doc.title,
+        "format": link.format,
+        "rendered_html": doc.rendered_html,
+    })))
+}
+
+// ---------- PDF → Markdown extraction ----------
+
+async fn extract_handler(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Json(payload): Json<extract::ExtractRequest>,
+) -> Result<Json<extract::ExtractResponse>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    usage::reserve(&state.pool, &ctx.user, ctx.api_key_id, "extract", 1).await?;
+    let res = extract::run(&payload).await?;
+    Ok(Json(res))
 }
 
 // ---------- Admin ----------

@@ -80,6 +80,8 @@ pub struct Document {
     pub theme: Option<String>,
     pub custom_css: Option<String>,
     pub pdf_options: Option<String>,
+    pub is_encrypted: i64,
+    pub encryption_salt: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -90,6 +92,7 @@ pub struct DocumentSummary {
     pub title: String,
     pub input_type: String,
     pub output_type: String,
+    pub is_encrypted: bool,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -101,6 +104,7 @@ impl From<&Document> for DocumentSummary {
             title: d.title.clone(),
             input_type: d.input_type.clone(),
             output_type: d.output_type.clone(),
+            is_encrypted: d.is_encrypted != 0,
             created_at: d.created_at,
             updated_at: d.updated_at,
         }
