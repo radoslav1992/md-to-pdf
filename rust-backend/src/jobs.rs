@@ -159,6 +159,11 @@ pub async fn get(pool: &SqlitePool, user: &User, id: i64) -> Result<JobView, Con
     row.map(|j| JobView::from(&j)).ok_or(ConvertError::NotFound)
 }
 
+/// Whether a status is a sink that the SSE stream should close on.
+pub fn is_terminal(status: &str) -> bool {
+    matches!(status, STATUS_DONE | STATUS_FAILED | STATUS_CANCELED)
+}
+
 pub async fn cancel(pool: &SqlitePool, user: &User, id: i64) -> Result<(), ConvertError> {
     let res = sqlx::query(
         "UPDATE jobs SET status = ?1, finished_at = ?2 \

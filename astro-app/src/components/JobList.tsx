@@ -36,6 +36,35 @@ export default function JobList() {
     return () => clearInterval(t);
   }, [load]);
 
+  // When a non-terminal job is selected, also subscribe to its
+  // /events SSE stream so its status pane updates in real time
+  // without waiting for the next 3 s list-poll.
+  useEffect(() => {
+    if (!selected || ['done', 'failed', 'canceled'].includes(selected.status)) {
+      return;
+    }
+    const es = new EventSource(`/api/v1/jobs/${selected.id}/events`, {
+      withCredentials: true,
+    });
+    es.addEventListener('status', (ev) => {
+      try {
+        const updated = JSON.parse((ev as MessageEvent).data) as JobView;
+        setSelected((prev) => (prev && prev.id === updated.id ? updated : prev));
+        setItems((prev) =>
+          prev ? prev.map((j) => (j.id === updated.id ? updated : j)) : prev,
+        );
+      } catch {
+        // Malformed payload — fall back to the regular poll loop.
+      }
+    });
+    es.onerror = () => {
+      // Network blip or terminal close. Cleanup happens via the
+      // effect's return below.
+      es.close();
+    };
+    return () => es.close();
+  }, [selected?.id, selected?.status]);
+
   const cancel = useCallback(
     async (id: number) => {
       if (!confirm('Cancel this queued job?')) return;

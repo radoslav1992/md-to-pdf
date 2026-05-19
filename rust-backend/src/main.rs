@@ -4,6 +4,7 @@ use axum::body::Body;
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -208,6 +209,7 @@ fn build_api_router(state: AppState) -> Router {
         .route("/jobs/convert", post(jobs_enqueue_convert))
         .route("/jobs/batch", post(jobs_enqueue_batch))
         .route("/jobs/{id}", get(jobs_get))
+        .route("/jobs/{id}/events", get(jobs_events))
         .route("/jobs/{id}/cancel", post(jobs_cancel))
         .route("/documents/{id}/versions", get(document_versions_list))
         .route(
@@ -250,6 +252,7 @@ fn build_api_router(state: AppState) -> Router {
         .route("/admin/users/{id}/role", post(admin_update_role))
         .route("/admin/cache", get(admin_cache_stats))
         .route("/admin/ratelimit", get(admin_ratelimit_stats))
+        .route("/admin/backup", get(admin_backup))
         // Layers run outside-in for requests, inside-out for responses,
         // so the order here is: rate-limit-check first (cheap, may
         // short-circuit), then the observability wrappers around the
@@ -934,6 +937,69 @@ async fn jobs_get(
     Ok(Json(json!({ "ok": true, "job": job })))
 }
 
+/// Server-Sent Events for a single job. Emits a `status` event on every
+/// change and a terminal `done` event when the job reaches a sink
+/// state, then closes. Drops back to ordinary polling on the client
+/// when the connection breaks.
+async fn jobs_events(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Response, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    // 401-equivalent on missing job up front, before opening the stream.
+    let initial = jobs::get(&state.pool, &ctx.user, id).await?;
+
+    let pool = state.pool.clone();
+    let user = ctx.user.clone();
+    use futures_util::stream::StreamExt;
+    let stream = async_stream::stream! {
+        // First event = current state, so the client doesn't need to
+        // make a separate GET to bootstrap its UI.
+        yield job_event(&initial);
+        if jobs::is_terminal(&initial.status) {
+            // Already finished — close immediately.
+            return;
+        }
+        let mut last_status = initial.status.clone();
+        // Cap the loop so a runaway worker can't hold the connection
+        // open forever. 30 minutes is well past any sane job duration.
+        let started = std::time::Instant::now();
+        let deadline = std::time::Duration::from_secs(30 * 60);
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(750)).await;
+            if started.elapsed() > deadline {
+                break;
+            }
+            match jobs::get(&pool, &user, id).await {
+                Ok(job) => {
+                    if job.status != last_status {
+                        last_status = job.status.clone();
+                        yield job_event(&job);
+                    }
+                    if jobs::is_terminal(&job.status) {
+                        break;
+                    }
+                }
+                Err(_) => {
+                    // User lost access mid-stream (e.g. row deleted).
+                    // Just close — the client can fall back to a GET.
+                    break;
+                }
+            }
+        }
+    };
+    Ok(Sse::new(stream.boxed())
+        .keep_alive(KeepAlive::new().interval(std::time::Duration::from_secs(15)))
+        .into_response())
+}
+
+fn job_event(job: &jobs::JobView) -> Result<Event, std::convert::Infallible> {
+    let payload = serde_json::to_string(job).unwrap_or_else(|_| "{}".to_string());
+    Ok(Event::default().event("status").data(payload))
+}
+
 async fn jobs_cancel(
     State(state): State<AppState>,
     jar: CookieJar,
@@ -1402,6 +1468,91 @@ async fn admin_users(
     auth::require_admin(&state, &jar).await?;
     let items = admin::list_users(&state.pool).await?;
     Ok(Json(json!({ "ok": true, "items": items })))
+}
+
+/// Streams a consistent snapshot of the SQLite database.
+///
+/// We use `VACUUM INTO` rather than copying the file from disk
+/// directly because the database is in WAL mode — copying the .db
+/// without the .db-wal would miss every write since the last
+/// checkpoint. `VACUUM INTO` runs against a consistent snapshot and
+/// also collapses fragmentation, so the resulting file is smaller and
+/// easier to inspect.
+///
+/// Restore is documented as an operator action (stop containers,
+/// replace the volume contents, restart). Doing it live-while-running
+/// would mean closing every pool connection at exactly the right
+/// instant — too fragile to be worth shipping.
+async fn admin_backup(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> Result<Response, ConvertError> {
+    auth::require_admin(&state, &jar).await?;
+
+    // Write the snapshot to a fresh temp file inside the system tmpdir.
+    // The file is unlinked as soon as we've read it into memory; we
+    // don't keep it on disk after the response is sent.
+    let tmp = tempfile::Builder::new()
+        .prefix("udc-backup-")
+        .suffix(".db")
+        .tempfile()
+        .map_err(|e| ConvertError::Internal(format!("tempfile: {e}")))?;
+    let path = tmp.path().to_path_buf();
+    // SQLite requires the target file not exist for `VACUUM INTO`, so
+    // remove the empty placeholder NamedTempFile created (then keep the
+    // TempPath as a safety net to clean up on drop).
+    let _path_guard = tmp.into_temp_path();
+    let _ = std::fs::remove_file(&path);
+
+    let target = path.to_string_lossy().replace('\'', "''");
+    sqlx::query(&format!("VACUUM INTO '{target}'"))
+        .execute(&state.pool)
+        .await
+        .map_err(|e| ConvertError::Internal(format!("VACUUM INTO failed: {e}")))?;
+
+    let bytes = tokio::fs::read(&path)
+        .await
+        .map_err(|e| ConvertError::Internal(format!("read snapshot: {e}")))?;
+    // Best-effort cleanup; `_path_guard` would also delete on drop.
+    let _ = tokio::fs::remove_file(&path).await;
+
+    let filename = format!(
+        "udc-backup-{}.db",
+        chrono_like_stamp(crate::db::now_seconds())
+    );
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "application/vnd.sqlite3")
+        .header(
+            "content-disposition",
+            format!("attachment; filename=\"{filename}\""),
+        )
+        .header("content-length", bytes.len().to_string())
+        .body(Body::from(bytes))
+        .map_err(|e| ConvertError::Internal(format!("response: {e}")))
+}
+
+/// Format `unix_secs` as `YYYYMMDD-HHMMSS` (UTC). Hand-rolled so we
+/// don't pull in `chrono` just for one filename.
+fn chrono_like_stamp(unix_secs: i64) -> String {
+    let secs = unix_secs.max(0) as u64;
+    let days = secs / 86_400;
+    let hour = (secs % 86_400) / 3_600;
+    let min = (secs % 3_600) / 60;
+    let sec = secs % 60;
+    // Days since 1970-01-01 → date via the standard Gregorian
+    // algorithm (Howard Hinnant's approach, public domain).
+    let z = days as i64 + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = (yoe as i64) + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = y + if m <= 2 { 1 } else { 0 };
+    format!("{year:04}{m:02}{d:02}-{hour:02}{min:02}{sec:02}")
 }
 
 async fn admin_update_role(
