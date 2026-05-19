@@ -20,12 +20,12 @@ Everything runs in Docker Compose behind Caddy.
 
 ## Feature matrix
 
-| Tier      | Inputs                                                    | Output    | Max payload | Save? | Themes / page setup |
-|-----------|-----------------------------------------------------------|-----------|-------------|-------|---------------------|
-| Anonymous | Markdown                                                  | HTML, PDF | 256 KB      | No    | Default only        |
-| Free      | Markdown                                                  | HTML, PDF | 256 KB      | Yes   | Default only        |
-| Premium   | + HTML, JSON, XML, CSV, Org-mode, AsciiDoc, RST, LaTeX    | HTML, PDF | 16 MB       | Yes   | 6 themes, custom CSS, PDF page setup, cover/header/footer, page numbers, multi-file Markdown |
-| Admin     | All of the above + user role management                                                                              |
+| Tier      | Inputs                                                    | Output    | Max payload | Quota / mo | Save? | Premium-only |
+|-----------|-----------------------------------------------------------|-----------|-------------|------------|-------|--------------|
+| Anonymous | Markdown                                                  | HTML, PDF | 256 KB      | unmetered  | No    | —            |
+| Free      | Markdown                                                  | HTML, PDF | 256 KB      | 100        | Yes   | —            |
+| Premium   | + HTML, JSON, XML, CSV, Org-mode, AsciiDoc, RST, LaTeX    | HTML, PDF | 16 MB       | 10,000     | Yes   | 6 themes, custom CSS, templates, PDF page setup, cover/header/footer, page numbers, multi-file Markdown, table of contents, syntax highlighting, LaTeX math, API keys, batch conversion, signed webhooks |
+| Admin     | All of the above + user role management + unlimited quota                                                                                                            |
 
 Subscriptions aren't built yet — for now an admin promotes accounts to
 `premium` manually from `/admin`.
@@ -123,7 +123,8 @@ No third-party service. Chromium + pandoc are bundled in the API image
 
 ## API reference
 
-All endpoints accept/return JSON. Auth is via an HttpOnly session cookie.
+All endpoints accept/return JSON. Auth is via an HttpOnly session cookie
+**or** an `Authorization: Bearer <api-key>` header.
 
 ### Auth
 - `POST /api/auth/signup` `{ email, password }` → user + sets cookie
@@ -132,7 +133,7 @@ All endpoints accept/return JSON. Auth is via an HttpOnly session cookie.
 - `GET  /api/auth/me` → `{ user: PublicUser | null }`
 
 ### Conversion
-- `POST /api/convert` `{ type, output, content, title?, theme?, custom_css?, pdf_options?, files? }`
+- `POST /api/convert` `{ type, output, content, title?, theme?, custom_css?, pdf_options?, files?, template_id?, enrichments? }`
   - `type`: `markdown | html | json | xml | csv | org | asciidoc | rst | latex`
     (only `markdown` is available without premium)
   - `output`: `html | pdf`
@@ -147,8 +148,37 @@ All endpoints accept/return JSON. Auth is via an HttpOnly session cookie.
     - `cover`: `{ title, subtitle, author, date }` — prepended cover page
   - `files`: `[ { path, content }, … ]` — multi-file bundle, concatenated in
     array order (premium; text formats only)
+  - `template_id` (premium): expand the named template's theme / custom_css /
+    pdf_options as defaults — request-level fields still override
+  - `enrichments` (premium): `{ toc?: bool, toc_depth?: 1..4, syntax_highlight?: bool, math?: bool }`
+    — auto-table of contents, server-side syntect highlighting, and LaTeX
+    math rendered to MathML
   - Returns `content` (HTML output) or `pdf_base64` (PDF output)
-  - Anonymous OK for Markdown with default theme and no PDF options
+  - Anonymous OK for Markdown with default theme and no premium features
+
+### Batch conversion (premium)
+- `POST /api/convert/batch?format=json|zip` `{ items: [ConvertRequest…], webhook? }`
+  - Up to 50 items per batch. Each item counts as 1 against your quota.
+  - `format=zip` returns a zip archive (`000.pdf`, `001.html`, `002.error.txt`, …);
+    `format=json` (default) returns a JSON array of per-item results.
+  - `webhook`: `{ url, secret? }` — when present, the JSON response is also
+    POSTed to `url`. If `secret` is set, the body is HMAC-SHA-256 signed
+    and the digest is sent in the `X-UDC-Signature` header.
+
+### Templates (premium)
+- `GET    /api/templates`        — list your templates
+- `POST   /api/templates`        — create `{ name, theme?, custom_css?, pdf_options? }`
+- `GET    /api/templates/:id`    — fetch one
+- `PATCH  /api/templates/:id`    — update
+- `DELETE /api/templates/:id`    — delete
+
+### API keys (premium)
+- `GET    /api/keys`             — list (hashes only; the plaintext is never returned again)
+- `POST   /api/keys` `{ name }`  — create; returns `{ key, plaintext }`
+- `DELETE /api/keys/:id`         — revoke
+
+### Usage
+- `GET /api/usage` → `{ used, limit, period_start }` — rolling 30-day window
 
 ### Documents (auth required)
 - `GET    /api/documents`        — list your saved documents

@@ -1,0 +1,17 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import TemplateList from '../components/TemplateList.tsx';
+---
+
+<BaseLayout title="Templates — Universal Document Converter">
+  <section class="max-w-6xl mx-auto px-4 py-10">
+    <div class="mb-6">
+      <h1 class="text-3xl font-bold text-slate-900">Templates</h1>
+      <p class="mt-2 text-slate-600">
+        Save reusable styling bundles — theme, page setup, custom CSS — and apply them to any
+        document with one click. Premium only.
+      </p>
+    </div>
+    <TemplateList client:load />
+  </section>
+</BaseLayout>

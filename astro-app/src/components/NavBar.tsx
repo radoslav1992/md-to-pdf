@@ -30,6 +30,12 @@ export default function NavBar() {
       ) : (
         <>
           <a href="/dashboard" className="hover:text-brand-600">Dashboard</a>
+          {(state.user.role === 'premium' || state.user.role === 'admin') && (
+            <>
+              <a href="/templates" className="hover:text-brand-600">Templates</a>
+              <a href="/api-keys" className="hover:text-brand-600">API keys</a>
+            </>
+          )}
           {state.user.role === 'admin' && (
             <a href="/admin" className="hover:text-brand-600">Admin</a>
           )}

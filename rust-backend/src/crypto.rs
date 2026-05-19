@@ -34,7 +34,11 @@ pub fn verify_password(password: &str, salt_hex: &str, hash_hex: &str) -> bool {
 }
 
 pub fn random_token() -> String {
-    let mut buf = [0u8; TOKEN_LEN];
+    random_hex(TOKEN_LEN)
+}
+
+pub fn random_hex(bytes: usize) -> String {
+    let mut buf = vec![0u8; bytes];
     rand::thread_rng().fill_bytes(&mut buf);
     hex::encode(buf)
 }

@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 
 use crate::db::{AppState, User};
+use crate::enrichments::Enrichments;
 use crate::error::ConvertError;
 use crate::pandoc;
 use crate::pdf;
+use crate::templates;
 use crate::themes;
 
 pub const MAX_INPUT_BYTES_FREE: usize = 256 * 1024; // 256 KiB for anonymous + free
@@ -27,7 +29,7 @@ pub struct ConvertFile {
     pub content: String,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Clone)]
 pub struct PdfMargin {
     pub top: Option<String>,
     pub right: Option<String>,
@@ -35,7 +37,7 @@ pub struct PdfMargin {
     pub left: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Clone)]
 pub struct PdfCover {
     pub title: Option<String>,
     pub subtitle: Option<String>,
@@ -44,7 +46,7 @@ pub struct PdfCover {
 }
 
 /// Page-setup controls for the PDF output. All fields are optional.
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Clone)]
 pub struct PdfOptions {
     pub page_size: Option<String>,
     pub orientation: Option<String>,
@@ -53,6 +55,24 @@ pub struct PdfOptions {
     pub header_template: Option<String>,
     pub footer_template: Option<String>,
     pub cover: Option<PdfCover>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct EnrichmentOptions {
+    #[serde(default)]
+    pub toc: bool,
+    #[serde(default)]
+    pub toc_depth: Option<u8>,
+    #[serde(default)]
+    pub syntax_highlight: bool,
+    #[serde(default)]
+    pub math: bool,
+}
+
+impl EnrichmentOptions {
+    pub fn is_active(&self) -> bool {
+        self.toc || self.syntax_highlight || self.math
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -73,6 +93,13 @@ pub struct ConvertRequest {
     pub custom_css: Option<String>,
     #[serde(default)]
     pub pdf_options: Option<PdfOptions>,
+    /// When set, the named template is loaded and its theme / custom_css /
+    /// pdf_options are used as defaults — request-level fields still win
+    /// if explicitly provided.
+    #[serde(default)]
+    pub template_id: Option<i64>,
+    #[serde(default)]
+    pub enrichments: Option<EnrichmentOptions>,
 }
 
 fn default_output() -> String {
@@ -107,20 +134,48 @@ pub async fn run(
         return Err(ConvertError::PremiumRequired);
     }
 
+    // Templates expand into request-level fields. Request-level explicit
+    // values still win — the template only provides defaults.
+    let (template_theme, template_css, template_pdf_options) =
+        if let Some(template_id) = req.template_id {
+            if !is_premium {
+                return Err(ConvertError::PremiumRequired);
+            }
+            let user = user.expect("premium implies authed");
+            let tmpl = templates::get(&state.pool, user, template_id).await?;
+            let pdf_opts = tmpl
+                .pdf_options
+                .as_deref()
+                .and_then(|s| serde_json::from_str::<PdfOptions>(s).ok());
+            (tmpl.theme, tmpl.custom_css, pdf_opts)
+        } else {
+            (None, None, None)
+        };
+
+    let theme_name = req
+        .theme
+        .clone()
+        .or(template_theme)
+        .unwrap_or_else(|| "default".to_string());
+    let custom_css = req.custom_css.clone().or(template_css);
+    let pdf_options = req.pdf_options.clone().or(template_pdf_options);
+
     // Premium gating for the new fields. We don't silently downgrade — fail
     // loudly so free users get a clear upgrade nudge instead of mysterious
     // output.
-    let theme_name = req.theme.as_deref().unwrap_or("default");
-    if !is_premium && themes::is_premium_theme(theme_name) {
+    if !is_premium && themes::is_premium_theme(&theme_name) {
         return Err(ConvertError::PremiumRequired);
     }
-    if !is_premium && req.custom_css.as_deref().is_some_and(|s| !s.is_empty()) {
+    if !is_premium && custom_css.as_deref().is_some_and(|s| !s.is_empty()) {
         return Err(ConvertError::PremiumRequired);
     }
-    if !is_premium && req.pdf_options.is_some() {
+    if !is_premium && pdf_options.is_some() {
         return Err(ConvertError::PremiumRequired);
     }
     if !is_premium && req.files.as_ref().is_some_and(|f| !f.is_empty()) {
+        return Err(ConvertError::PremiumRequired);
+    }
+    if !is_premium && req.enrichments.as_ref().is_some_and(|e| e.is_active()) {
         return Err(ConvertError::PremiumRequired);
     }
 
@@ -153,7 +208,7 @@ pub async fn run(
         return Err(ConvertError::PayloadTooLarge(raw_input.len(), max));
     }
 
-    let body_html = match normalized_input.as_str() {
+    let mut body_html = match normalized_input.as_str() {
         "markdown" | "md" => markdown_to_html(raw_input),
         "html" => sanitize_html(raw_input),
         "json" => json_to_html(raw_input)?,
@@ -166,13 +221,23 @@ pub async fn run(
         other => return Err(ConvertError::UnsupportedInput(other.to_string())),
     };
 
+    if let Some(opts) = req.enrichments.as_ref().filter(|o| o.is_active()) {
+        let e = Enrichments {
+            toc: opts.toc,
+            toc_depth: opts.toc_depth.unwrap_or(3),
+            syntax_highlight: opts.syntax_highlight,
+            math: opts.math,
+        };
+        body_html = crate::enrichments::apply(&body_html, &e);
+    }
+
     let title = req.title.clone().unwrap_or_else(|| "Document".to_string());
     let document = wrap_document(
         &title,
         &body_html,
-        theme_name,
-        req.custom_css.as_deref(),
-        req.pdf_options.as_ref(),
+        &theme_name,
+        custom_css.as_deref(),
+        pdf_options.as_ref(),
     );
 
     match req.output.to_ascii_lowercase().as_str() {
@@ -188,8 +253,7 @@ pub async fn run(
             let _permit = state.pdf_semaphore.acquire().await.map_err(|e| {
                 ConvertError::Internal(format!("failed to acquire pdf permit: {e}"))
             })?;
-            let want_numbers = req
-                .pdf_options
+            let want_numbers = pdf_options
                 .as_ref()
                 .and_then(|o| o.page_numbers)
                 .unwrap_or(false);
