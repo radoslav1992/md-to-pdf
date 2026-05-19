@@ -30,6 +30,7 @@ mod images;
 mod jobs;
 mod pandoc;
 mod pdf;
+mod render_cache;
 mod shares;
 mod templates;
 mod themes;
@@ -68,12 +69,20 @@ async fn main() -> anyhow::Result<()> {
     let pool = db::connect(&database_url).await?;
     sqlx::migrate!("./migrations").run(&pool).await?;
 
+    let render_cache_max_bytes: usize = std::env::var("RENDER_CACHE_MAX_BYTES")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(render_cache::DEFAULT_MAX_BYTES);
+
     let state = AppState {
         pool,
         admin_emails,
         cookie_secure,
         chromium_bin,
         pdf_semaphore: std::sync::Arc::new(tokio::sync::Semaphore::new(5)),
+        render_cache: std::sync::Arc::new(std::sync::Mutex::new(
+            render_cache::RenderCache::new(render_cache_max_bytes),
+        )),
     };
 
     // Spawn the background job worker. One worker is enough on the
@@ -146,6 +155,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/api/admin/users", get(admin_users))
         .route("/api/admin/users/{id}/role", post(admin_update_role))
+        .route("/api/admin/cache", get(admin_cache_stats))
         .fallback(not_found)
         .layer(DefaultBodyLimit::max(BODY_LIMIT_BYTES))
         .layer(CorsLayer::permissive())
@@ -774,4 +784,13 @@ async fn admin_update_role(
     let actor = auth::require_admin(&state, &jar).await?;
     let user = admin::update_role(&state.pool, &actor, id, &payload).await?;
     Ok(Json(json!({ "ok": true, "user": user })))
+}
+
+async fn admin_cache_stats(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    auth::require_admin(&state, &jar).await?;
+    let stats = state.render_cache.lock().expect("render cache poisoned").stats();
+    Ok(Json(json!({ "ok": true, "cache": stats })))
 }

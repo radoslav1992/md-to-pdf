@@ -97,6 +97,93 @@ pub fn encode_base64(bytes: &[u8]) -> String {
     STANDARD.encode(bytes)
 }
 
+/// Snapshot the document as a PNG or JPEG using Chromium's
+/// `--screenshot=` flag. JPEG output uses `image/jpeg` and Chromium
+/// negotiates the encoder from the filename suffix.
+///
+/// `wait_for_js` shares the same meaning as in [`render`] — it extends
+/// the virtual time budget so Mermaid (or any future client-side
+/// renderer) has room to finish before the capture.
+pub async fn screenshot(
+    chromium_bin: &str,
+    html: &str,
+    format: ImageFormat,
+    wait_for_js: bool,
+) -> Result<Vec<u8>, ConvertError> {
+    let mut html_file = NamedTempFile::with_suffix(".html")
+        .map_err(|e| ConvertError::Internal(format!("temp html: {e}")))?;
+    html_file
+        .write_all(html.as_bytes())
+        .map_err(|e| ConvertError::Internal(format!("write html: {e}")))?;
+    html_file
+        .flush()
+        .map_err(|e| ConvertError::Internal(format!("flush html: {e}")))?;
+    let html_path = html_file.path().to_path_buf();
+
+    let suffix = match format {
+        ImageFormat::Png => ".png",
+        ImageFormat::Jpeg => ".jpg",
+    };
+    let img_file = NamedTempFile::with_suffix(suffix)
+        .map_err(|e| ConvertError::Internal(format!("temp image: {e}")))?;
+    let img_path = img_file.path().to_path_buf();
+    let img_handle = img_file.into_temp_path();
+
+    let screenshot_arg = format!("--screenshot={}", img_path.display());
+    let file_url = format!("file://{}", html_path.display());
+    // 1280×1024 is the Chromium default and gives an ergonomic aspect
+    // ratio for documents; users who want larger images can render to PDF
+    // and rasterize themselves.
+    let window_size = "--window-size=1280,1600";
+    let mut args: Vec<&str> = vec![
+        "--headless=new",
+        "--disable-gpu",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--hide-scrollbars",
+        "--default-background-color=00000000",
+        window_size,
+    ];
+    if wait_for_js {
+        args.push("--virtual-time-budget=8000");
+    }
+    args.push(&screenshot_arg);
+    args.push(&file_url);
+
+    let output = Command::new(chromium_bin)
+        .args(&args)
+        .output()
+        .await
+        .map_err(|e| ConvertError::PdfRender(format!("spawn chromium: {e}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(ConvertError::PdfRender(format!(
+            "chromium exited with {}: {}",
+            output.status,
+            truncate(&stderr, 500)
+        )));
+    }
+
+    let bytes = tokio::fs::read(&img_path)
+        .await
+        .map_err(|e| ConvertError::PdfRender(format!("read image: {e}")))?;
+    drop(img_handle);
+    drop(html_file);
+    if bytes.is_empty() {
+        return Err(ConvertError::PdfRender(
+            "chromium produced empty screenshot".into(),
+        ));
+    }
+    Ok(bytes)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ImageFormat {
+    Png,
+    Jpeg,
+}
+
 fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()

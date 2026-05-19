@@ -140,7 +140,19 @@ All endpoints accept/return JSON. Auth is via an HttpOnly session cookie
 - `POST /api/convert` `{ type, output, content, title?, theme?, custom_css?, pdf_options?, files?, template_id?, enrichments? }`
   - `type`: `markdown | html | json | xml | csv | org | asciidoc | rst | latex`
     (only `markdown` is available without premium)
-  - `output`: `html | pdf`
+  - `output`: `html | pdf | markdown | docx | epub | odt | png | jpg`
+    - **html** — returns the rendered document in `content`
+    - **pdf** — Chromium-rendered, returned in both `pdf_base64`
+      (legacy field) and `output_base64`
+    - **markdown** — pipes the rendered HTML through pandoc → GFM
+      Markdown; useful when you want enrichments (TOC, syntax-
+      highlighted code) baked into a Markdown export
+    - **docx / epub / odt** — pandoc-driven binary archives, returned
+      in `output_base64`
+    - **png / jpg** — single-page Chromium screenshot of the rendered
+      document at 1280 × 1600, returned in `output_base64`
+    - All binary outputs also set `output_mime` so clients can pick the
+      right download filename without hard-coding cases.
   - `theme`: `default` (free) or `clean | academic | resume | letter | github` (premium)
   - `custom_css`: arbitrary CSS string appended to the document (premium)
   - `pdf_options` (premium, applies when `output: "pdf"`):
@@ -160,7 +172,12 @@ All endpoints accept/return JSON. Auth is via an HttpOnly session cookie
     vendored at `rust-backend/vendor/mermaid.min.js` and inlined into the
     rendered document; Chromium runs it during PDF capture so no
     third-party network call is required.
-  - Returns `content` (HTML output) or `pdf_base64` (PDF output)
+  - Identical request/response shape regardless of `output`; just pick
+    the right field for the format (`content` for text outputs,
+    `output_base64` for binary ones).
+  - Responses set `cached: true` when served from the in-memory render
+    cache (keyed by every input that can change the output, including
+    the calling user so per-user image inlining stays sound).
   - Anonymous OK for Markdown with default theme and no premium features
 
 ### Batch conversion (premium)
@@ -252,6 +269,9 @@ page, so file://-based renders still see the bytes.
 ### Admin (admin role required)
 - `GET  /api/admin/users`              — list all users
 - `POST /api/admin/users/:id/role`     `{ role: "free" | "premium" | "admin" }`
+- `GET  /api/admin/cache`              — render-cache stats
+  (entries, total_bytes, max_bytes, hits, misses). Cap configurable via
+  `RENDER_CACHE_MAX_BYTES` env (default 128 MiB).
 
 ## Architecture notes
 

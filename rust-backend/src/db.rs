@@ -6,6 +6,8 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
+use crate::render_cache::SharedRenderCache;
+
 #[derive(Clone)]
 pub struct AppState {
     pub pool: SqlitePool,
@@ -13,6 +15,7 @@ pub struct AppState {
     pub cookie_secure: bool,
     pub chromium_bin: String,
     pub pdf_semaphore: Arc<Semaphore>,
+    pub render_cache: SharedRenderCache,
 }
 
 pub async fn connect(url: &str) -> Result<SqlitePool, sqlx::Error> {
