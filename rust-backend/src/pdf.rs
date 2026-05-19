@@ -10,7 +10,15 @@ use crate::error::ConvertError;
 /// `chromium`). The HTML is written to a temp file and Chromium's
 /// `--print-to-pdf` flag emits the PDF to another temp file, which we then
 /// read back.
-pub async fn render(chromium_bin: &str, html: &str) -> Result<Vec<u8>, ConvertError> {
+///
+/// `page_numbers` controls whether Chromium's built-in header/footer (page
+/// numbers + document title) is included. Custom headers/footers are
+/// rendered via CSS `position: fixed` elements in the document itself.
+pub async fn render(
+    chromium_bin: &str,
+    html: &str,
+    page_numbers: bool,
+) -> Result<Vec<u8>, ConvertError> {
     let mut html_file = NamedTempFile::with_suffix(".html")
         .map_err(|e| ConvertError::Internal(format!("temp html: {e}")))?;
     html_file
@@ -28,18 +36,24 @@ pub async fn render(chromium_bin: &str, html: &str) -> Result<Vec<u8>, ConvertEr
     // keep the path. The TempPath cleans up on drop.
     let pdf_path_handle = pdf_file.into_temp_path();
 
+    let print_to_pdf = format!("--print-to-pdf={}", pdf_path.display());
+    let file_url = format!("file://{}", html_path.display());
+    let mut args: Vec<&str> = vec![
+        "--headless=new",
+        "--disable-gpu",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--hide-scrollbars",
+        "--run-all-compositor-stages-before-draw",
+    ];
+    if !page_numbers {
+        args.push("--no-pdf-header-footer");
+    }
+    args.push(&print_to_pdf);
+    args.push(&file_url);
+
     let output = Command::new(chromium_bin)
-        .args([
-            "--headless=new",
-            "--disable-gpu",
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
-            "--hide-scrollbars",
-            "--run-all-compositor-stages-before-draw",
-            "--no-pdf-header-footer",
-            &format!("--print-to-pdf={}", pdf_path.display()),
-            &format!("file://{}", html_path.display()),
-        ])
+        .args(&args)
         .output()
         .await
         .map_err(|e| ConvertError::PdfRender(format!("spawn chromium: {e}")))?;

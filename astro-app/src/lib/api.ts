@@ -20,6 +20,63 @@ export interface SavedDocument extends DocumentSummary {
   user_id: number;
   content: string;
   rendered_html: string | null;
+  theme: string | null;
+  custom_css: string | null;
+  pdf_options: string | null;
+}
+
+export type PageSize = 'A4' | 'A3' | 'A5' | 'Letter' | 'Legal' | 'Tabloid';
+export type Orientation = 'portrait' | 'landscape';
+
+export interface PdfMargin {
+  top?: string;
+  right?: string;
+  bottom?: string;
+  left?: string;
+}
+
+export interface PdfCover {
+  title?: string;
+  subtitle?: string;
+  author?: string;
+  date?: string;
+}
+
+export interface PdfOptions {
+  page_size?: PageSize | string;
+  orientation?: Orientation;
+  margin?: PdfMargin;
+  page_numbers?: boolean;
+  header_template?: string;
+  footer_template?: string;
+  cover?: PdfCover;
+}
+
+export interface ConvertFile {
+  path: string;
+  content: string;
+}
+
+export interface ConvertPayload {
+  type: string;
+  output: 'html' | 'pdf';
+  content?: string;
+  files?: ConvertFile[];
+  title?: string;
+  theme?: string;
+  custom_css?: string;
+  pdf_options?: PdfOptions;
+}
+
+export interface SaveDocumentPayload {
+  title: string;
+  type: string;
+  output: 'html' | 'pdf';
+  content: string;
+  rendered_html?: string | null;
+  theme?: string | null;
+  custom_css?: string | null;
+  pdf_options?: PdfOptions | null;
 }
 
 export interface ConvertResult {
@@ -72,7 +129,7 @@ export const api = {
     }),
   logout: () => request<{ ok: true }>('/api/auth/logout', { method: 'POST' }),
 
-  convert: (payload: { type: string; output: 'html' | 'pdf'; content: string; title?: string }) =>
+  convert: (payload: ConvertPayload) =>
     request<ConvertResult>('/api/convert', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -82,27 +139,12 @@ export const api = {
     request<{ ok: true; items: DocumentSummary[] }>('/api/documents'),
   getDocument: (id: number) =>
     request<{ ok: true; document: SavedDocument }>(`/api/documents/${id}`),
-  saveDocument: (payload: {
-    title: string;
-    type: string;
-    output: 'html' | 'pdf';
-    content: string;
-    rendered_html?: string | null;
-  }) =>
+  saveDocument: (payload: SaveDocumentPayload) =>
     request<{ ok: true; document: SavedDocument }>('/api/documents', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  updateDocument: (
-    id: number,
-    payload: {
-      title: string;
-      type: string;
-      output: 'html' | 'pdf';
-      content: string;
-      rendered_html?: string | null;
-    },
-  ) =>
+  updateDocument: (id: number, payload: SaveDocumentPayload) =>
     request<{ ok: true; document: SavedDocument }>(`/api/documents/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),

@@ -20,12 +20,12 @@ Everything runs in Docker Compose behind Caddy.
 
 ## Feature matrix
 
-| Tier      | Inputs                       | Output    | Max payload | Save? |
-|-----------|------------------------------|-----------|-------------|-------|
-| Anonymous | Markdown                     | HTML, PDF | 256 KB      | No    |
-| Free      | Markdown                     | HTML, PDF | 256 KB      | Yes   |
-| Premium   | Markdown, HTML, JSON, XML    | HTML, PDF | 4 MB        | Yes   |
-| Admin     | All of the above + user role management         |             |       |
+| Tier      | Inputs                                                    | Output    | Max payload | Save? | Themes / page setup |
+|-----------|-----------------------------------------------------------|-----------|-------------|-------|---------------------|
+| Anonymous | Markdown                                                  | HTML, PDF | 256 KB      | No    | Default only        |
+| Free      | Markdown                                                  | HTML, PDF | 256 KB      | Yes   | Default only        |
+| Premium   | + HTML, JSON, XML, CSV, Org-mode, AsciiDoc, RST, LaTeX    | HTML, PDF | 16 MB       | Yes   | 6 themes, custom CSS, PDF page setup, cover/header/footer, page numbers, multi-file Markdown |
+| Admin     | All of the above + user role management                                                                              |
 
 Subscriptions aren't built yet — for now an admin promotes accounts to
 `premium` manually from `/admin`.
@@ -103,15 +103,23 @@ so the UI works against your local backend with no extra config.
 Headless Chromium runs *inside the API container*. When a request hits
 `POST /api/convert` with `output: "pdf"`, the worker:
 
-1. Normalizes the input format to HTML
-2. Writes the HTML to a temp file
-3. Spawns `chromium --headless --print-to-pdf=/tmp/x.pdf file:///tmp/x.html`
-4. Reads the resulting PDF and base64-encodes it in the JSON response
+1. Normalizes the input format to HTML (markdown / html / json / xml / csv /
+   org natively; asciidoc / rst / latex via `pandoc` shelled out from the
+   same container)
+2. Wraps the body with the chosen theme CSS plus `@page` rules built from
+   `pdf_options`
+3. Writes the HTML to a temp file
+4. Spawns `chromium --headless --print-to-pdf=/tmp/x.pdf file:///tmp/x.html`
+   (with `--no-pdf-header-footer` unless `pdf_options.page_numbers` is set)
+5. Reads the resulting PDF and base64-encodes it in the JSON response
 
-No third-party service. Chromium is bundled in the API image (~300 MB).
-The container has a 2 GB memory limit; each render uses ~150–300 MB. Concurrent
-requests run in parallel but you'll want to add a queue if you expect more
-than ~5 simultaneous PDF jobs on a CX23.
+Custom headers, footers, and cover pages are rendered as `position: fixed`
+elements and `page-break-after` sections in the document itself, so they
+work on every Chromium version without needing the DevTools protocol.
+
+No third-party service. Chromium + pandoc are bundled in the API image
+(~450 MB). The container has a 2 GB memory limit; each render uses
+~150–300 MB. Concurrent PDF renders are bounded by a semaphore (default 5).
 
 ## API reference
 
@@ -124,16 +132,29 @@ All endpoints accept/return JSON. Auth is via an HttpOnly session cookie.
 - `GET  /api/auth/me` → `{ user: PublicUser | null }`
 
 ### Conversion
-- `POST /api/convert` `{ type, output, content, title? }`
-  - `type`: `markdown | html | json | xml`  (HTML/JSON/XML require premium)
+- `POST /api/convert` `{ type, output, content, title?, theme?, custom_css?, pdf_options?, files? }`
+  - `type`: `markdown | html | json | xml | csv | org | asciidoc | rst | latex`
+    (only `markdown` is available without premium)
   - `output`: `html | pdf`
+  - `theme`: `default` (free) or `clean | academic | resume | letter | github` (premium)
+  - `custom_css`: arbitrary CSS string appended to the document (premium)
+  - `pdf_options` (premium, applies when `output: "pdf"`):
+    - `page_size`: `A4 | A3 | A5 | Letter | Legal | Tabloid` (default `A4`)
+    - `orientation`: `portrait | landscape`
+    - `margin`: `{ top, right, bottom, left }` — CSS lengths like `"1in"`, `"20mm"`
+    - `page_numbers`: `bool` — Chromium's built-in footer with page numbers + title
+    - `header_template` / `footer_template`: HTML that repeats on every page
+    - `cover`: `{ title, subtitle, author, date }` — prepended cover page
+  - `files`: `[ { path, content }, … ]` — multi-file bundle, concatenated in
+    array order (premium; text formats only)
   - Returns `content` (HTML output) or `pdf_base64` (PDF output)
-  - Anonymous OK for Markdown
+  - Anonymous OK for Markdown with default theme and no PDF options
 
 ### Documents (auth required)
 - `GET    /api/documents`        — list your saved documents
-- `POST   /api/documents`        — save `{ title, type, output, content, rendered_html? }`
+- `POST   /api/documents`        — save `{ title, type, output, content, rendered_html?, theme?, custom_css?, pdf_options? }`
 - `GET    /api/documents/:id`    — fetch one (only your own)
+- `PATCH  /api/documents/:id`    — update one (same body as POST)
 - `DELETE /api/documents/:id`    — delete one
 
 ### Admin (admin role required)

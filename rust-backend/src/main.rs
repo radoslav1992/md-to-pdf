@@ -18,12 +18,14 @@ mod crypto;
 mod db;
 mod documents;
 mod error;
+mod pandoc;
 mod pdf;
+mod themes;
 
 use crate::db::AppState;
 use crate::error::ConvertError;
 
-const BODY_LIMIT_BYTES: usize = 8 * 1024 * 1024; // 8 MiB
+const BODY_LIMIT_BYTES: usize = 32 * 1024 * 1024; // 32 MiB — covers 16 MiB premium input plus JSON envelope
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

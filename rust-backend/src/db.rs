@@ -77,6 +77,9 @@ pub struct Document {
     pub output_type: String,
     pub content: String,
     pub rendered_html: Option<String>,
+    pub theme: Option<String>,
+    pub custom_css: Option<String>,
+    pub pdf_options: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }

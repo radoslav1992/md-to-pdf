@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type SavedDocument } from '../lib/api';
+import { api, type PdfOptions } from '../lib/api';
 import ConverterEditor from './ConverterEditor';
 
 export default function EditorWrapper() {
@@ -11,6 +11,9 @@ export default function EditorWrapper() {
     type: any;
     output: any;
     content: string;
+    theme?: string | null;
+    custom_css?: string | null;
+    pdf_options?: PdfOptions | null;
   } | null>(null);
 
   useEffect(() => {
@@ -24,12 +27,23 @@ export default function EditorWrapper() {
     setLoading(true);
     api.getDocument(id)
       .then(res => {
+        let parsedPdfOptions: PdfOptions | null = null;
+        if (res.document.pdf_options) {
+          try {
+            parsedPdfOptions = JSON.parse(res.document.pdf_options) as PdfOptions;
+          } catch {
+            parsedPdfOptions = null;
+          }
+        }
         setInitialData({
           id: res.document.id,
           title: res.document.title,
           type: res.document.input_type,
           output: res.document.output_type,
           content: res.document.content,
+          theme: res.document.theme,
+          custom_css: res.document.custom_css,
+          pdf_options: parsedPdfOptions,
         });
       })
       .catch(err => {
