@@ -9,6 +9,7 @@ astro-app/.astro/
 astro-app/.output/
 
 # Rust
+target/
 rust-backend/target/
 **/*.rs.bk
 

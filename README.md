@@ -130,6 +130,60 @@ No third-party service. Chromium + pandoc are bundled in the API image
 All endpoints accept/return JSON. Auth is via an HttpOnly session cookie
 **or** an `Authorization: Bearer <api-key>` header.
 
+### Versioning
+
+Every endpoint is reachable at two paths:
+
+- `/api/v1/<endpoint>` — canonical, stable v1 surface
+- `/api/<endpoint>`    — legacy unversioned alias (kept forever)
+
+Future breaking changes will land at `/api/v2/...` without disturbing
+v1. New clients should always prefer the explicit version.
+
+### OpenAPI & Docs
+
+- `GET /api/v1/openapi.yaml` — the hand-written OpenAPI 3.1 spec
+- `GET /api/v1/openapi.json` — same spec, JSON encoding
+- `GET /api-docs` — interactive Redoc-rendered reference (vendored JS,
+  no third-party calls)
+
+To generate SDKs from the spec, point any OpenAPI generator at it. For
+example, the official [openapi-generator-cli](https://openapi-generator.tech):
+
+```sh
+# TypeScript axios client
+openapi-generator-cli generate -i http://localhost:8000/api/v1/openapi.yaml \
+  -g typescript-axios -o ./sdk-ts
+
+# Python pydantic + requests
+openapi-generator-cli generate -i http://localhost:8000/api/v1/openapi.yaml \
+  -g python -o ./sdk-py
+```
+
+### Rate limiting
+
+Every request after auth resolution is metered against a per-identity
+token bucket. The bucket key is, in order:
+
+1. API key id  (when `Authorization: Bearer …` is used)
+2. User id     (when the session cookie is used)
+3. IP          (anonymous — uses `X-Forwarded-For` first hop or the peer addr)
+
+Capacities per tier:
+
+| Tier      | Burst | Refill    |
+|-----------|-------|-----------|
+| Anonymous |    30 |  30 / min |
+| Free      |    60 |  60 / min |
+| Premium   |   600 | 600 / min |
+| Admin     | 6 000 | 6 000/min |
+
+Responses carry `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and
+`X-RateLimit-Window-Seconds`. When the bucket is empty the API returns
+`429 Too Many Requests` with a `Retry-After` header. `/health` and
+`/openapi.{yaml,json}` bypass the limiter so monitors and dashboards
+never get throttled.
+
 ### Auth
 - `POST /api/auth/signup` `{ email, password }` → user + sets cookie
 - `POST /api/auth/login`  `{ email, password }` → user + sets cookie
@@ -188,6 +242,23 @@ All endpoints accept/return JSON. Auth is via an HttpOnly session cookie
   - `webhook`: `{ url, secret? }` — when present, the JSON response is also
     POSTed to `url`. If `secret` is set, the body is HMAC-SHA-256 signed
     and the digest is sent in the `X-UDC-Signature` header.
+
+### URL watches (premium)
+Inverse of batch webhooks: a background worker polls a URL on a
+schedule, and whenever the content changes it runs a conversion and
+POSTs the result to your `target_url`.
+- `GET    /api/v1/url-watches`        — list your watches
+- `POST   /api/v1/url-watches`        — create
+- `GET    /api/v1/url-watches/:id`    — fetch one
+- `PATCH  /api/v1/url-watches/:id`    — update
+- `DELETE /api/v1/url-watches/:id`    — delete
+
+Body fields: `name`, `url` (http(s) to poll), `input_type`,
+`output_format` (`html | pdf`), `target_url`, optional `target_secret`,
+`poll_interval_secs` (60..=604800; default 900). When `target_secret`
+is set the JSON delivery body is HMAC-SHA-256 signed and the digest
+is sent in `X-UDC-Signature`. The poller wakes every 30 s and processes
+up to 32 due watches per tick.
 
 ### Templates (premium)
 - `GET    /api/templates`        — list your templates
@@ -292,6 +363,54 @@ page, so file://-based renders still see the bytes.
 - `GET  /api/admin/cache`              — render-cache stats
   (entries, total_bytes, max_bytes, hits, misses). Cap configurable via
   `RENDER_CACHE_MAX_BYTES` env (default 128 MiB).
+- `GET  /api/admin/ratelimit`          — current rate-limit bucket count
+  + cap (the bucket cap is configurable via `RATE_LIMIT_MAX_BUCKETS`)
+
+## CLI
+
+`cli/` is a small standalone Rust binary that wraps the API. It uses
+the `/api/v1` surface, supports both env-var and saved-config auth, and
+ships in the workspace alongside the API.
+
+```sh
+# Build it
+cargo build --release --bin udc
+./target/release/udc --help
+
+# Persist credentials so you don't have to pass them every time
+udc login https://docs.example.com paste-api-key-here   # or `-` to read from stdin
+
+# Convert and write to a file
+udc convert README.md -o README.pdf --format pdf
+
+# Pipe through stdin/stdout
+cat doc.md | udc convert - -o - --type markdown --format html > doc.html
+
+# Quick status
+udc health
+udc usage
+udc watches
+```
+
+Config file lives at the OS-standard config dir (`udc config` prints
+the path).
+
+## GitHub Action
+
+A composite action lives at `.github/actions/convert`. Drop it into any
+repo workflow alongside the secrets and it will install the `udc` CLI
+(via `cargo install`) and run a conversion. See
+`.github/workflows/example-convert.yml` for the canonical example.
+
+```yaml
+- uses: dtolnay/rust-toolchain@stable
+- uses: radoslav1992/md-to-pdf/.github/actions/convert@main
+  with:
+    base-url: ${{ vars.UDC_BASE_URL }}
+    api-key:  ${{ secrets.UDC_API_KEY }}
+    input:    README.md
+    format:   pdf
+```
 
 ## Architecture notes
 

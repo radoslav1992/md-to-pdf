@@ -1,0 +1,39 @@
+---
+import '../styles/global.css';
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>API reference — Universal Document Converter</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    {/* Redoc needs a real <html>/<body> wrapper; keeping it outside BaseLayout
+        avoids the nav clipping the in-page sidebar. The vendored bundle
+        is loaded synchronously so the spec renders without a flash. */}
+    <style>
+      html, body { margin: 0; padding: 0; height: 100%; }
+      .topbar {
+        display: flex; align-items: center; gap: 0.75rem;
+        padding: 0.75rem 1.25rem;
+        border-bottom: 1px solid #e7e5e4;
+        background: #fffbf3;
+        font: 14px/1.4 'Inter', system-ui, sans-serif;
+      }
+      .topbar a { color: #0d9488; text-decoration: none; }
+      .topbar a:hover { text-decoration: underline; }
+      .topbar .spacer { flex: 1; }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <a href="/">← back to app</a>
+      <span class="spacer"></span>
+      <a href="/api/v1/openapi.yaml" download>openapi.yaml</a>
+      <a href="/api/v1/openapi.json" download>openapi.json</a>
+    </div>
+    <redoc spec-url="/api/v1/openapi.yaml"></redoc>
+    <script src="/vendor/redoc.standalone.js" defer></script>
+  </body>
+</html>

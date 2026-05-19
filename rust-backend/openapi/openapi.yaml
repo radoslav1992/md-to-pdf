@@ -1,0 +1,1173 @@
+openapi: 3.1.0
+info:
+  title: Universal Document Converter API
+  version: 1.0.0
+  description: |
+    Self-hosted SaaS that converts Markdown, HTML, JSON, XML, CSV, Org-mode,
+    AsciiDoc, RST and LaTeX into HTML and PDF. The same API powers the
+    bundled Astro editor and any external client.
+
+    **Versioning.** Every endpoint is reachable both at its legacy `/api/...`
+    path (unchanged forever) and the canonical `/api/v1/...` path. New
+    breaking changes will land at `/api/v2/...` without disturbing v1.
+
+    **Auth.** Send the `session` HttpOnly cookie obtained from
+    `/auth/login` *or* an `Authorization: Bearer <api-key>` header (API
+    keys are premium).
+
+    **Quotas & rate limits.** Conversion endpoints decrement a monthly
+    quota (`GET /usage`). Every authenticated identity is also rate-
+    limited via a token bucket; see the `X-RateLimit-*` response headers.
+  contact:
+    name: Universal Converter
+    url: https://github.com/radoslav1992/md-to-pdf
+  license:
+    name: MIT
+
+servers:
+  - url: /api/v1
+    description: Stable v1 surface (recommended)
+  - url: /api
+    description: Legacy unversioned alias (identical to v1)
+
+security:
+  - sessionCookie: []
+  - bearerAuth: []
+  - {}  # anonymous OK for some endpoints — they note it explicitly
+
+tags:
+  - name: Auth
+  - name: Conversion
+  - name: Documents
+  - name: Templates
+  - name: API keys
+  - name: Usage
+  - name: Jobs
+  - name: Versions
+  - name: Encryption
+  - name: Shares
+  - name: Extract
+  - name: Images
+  - name: URL watches
+  - name: Admin
+
+paths:
+  /health:
+    get:
+      tags: [Auth]
+      summary: Liveness probe
+      security: []
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  service: { type: string }
+                  version: { type: string }
+
+  /auth/signup:
+    post:
+      tags: [Auth]
+      summary: Create an account and start a session
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Credentials' }
+      responses:
+        '200':
+          description: Account created; session cookie set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  user: { $ref: '#/components/schemas/PublicUser' }
+        '409': { description: Email already in use }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Exchange credentials for a session cookie
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Credentials' }
+      responses:
+        '200':
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  user: { $ref: '#/components/schemas/PublicUser' }
+        '401': { description: Bad credentials }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Clear the current session cookie
+      responses:
+        '200': { description: Logged out }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Whoami
+      responses:
+        '200':
+          description: Current user, or `null` for anonymous callers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  user:
+                    oneOf:
+                      - { $ref: '#/components/schemas/PublicUser' }
+                      - { type: 'null' }
+
+  /convert:
+    post:
+      tags: [Conversion]
+      summary: Convert input to HTML or PDF
+      description: |
+        Single most-used endpoint. Accepts any of the supported input
+        formats (`type`) and emits the chosen `output`. Anonymous callers
+        are allowed for Markdown → HTML/PDF with the default theme;
+        everything else requires a premium account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConvertRequest' }
+            examples:
+              minimal:
+                summary: Markdown → HTML
+                value:
+                  type: markdown
+                  output: html
+                  content: "# Hello\n\nWorld"
+              pdf-with-options:
+                summary: PDF with custom page setup
+                value:
+                  type: markdown
+                  output: pdf
+                  title: My doc
+                  content: "# Hello"
+                  theme: clean
+                  pdf_options:
+                    page_size: Letter
+                    orientation: landscape
+                    page_numbers: true
+      responses:
+        '200':
+          description: Rendered output
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConvertResponse' }
+        '403': { description: Premium-gated feature used by a free account }
+        '413': { description: Payload exceeds the per-tier limit }
+        '422': { description: Input did not parse }
+
+  /convert/batch:
+    post:
+      tags: [Conversion]
+      summary: Convert up to 50 items in one call (premium)
+      parameters:
+        - in: query
+          name: format
+          schema: { type: string, enum: [json, zip] }
+          description: |
+            `json` (default) returns an array of per-item results.
+            `zip` returns a binary archive (`000.pdf`, `001.html`, …).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BatchRequest' }
+      responses:
+        '200':
+          description: Batch result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BatchResponse' }
+            application/zip:
+              schema: { type: string, format: binary }
+
+  /documents:
+    get:
+      tags: [Documents]
+      summary: List your saved documents
+      parameters:
+        - { in: query, name: q,      schema: { type: string }, description: Full-text query (FTS5) }
+        - { in: query, name: folder, schema: { type: string }, description: Exact folder match. Empty string = top-level. }
+        - { in: query, name: tag,    schema: { type: string }, description: Single tag, lowercased }
+      responses:
+        '200':
+          description: Documents + the set of folders / tags currently in use
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  items: { type: array, items: { $ref: '#/components/schemas/DocumentSummary' } }
+                  folders: { type: array, items: { type: string } }
+                  tags:    { type: array, items: { type: string } }
+    post:
+      tags: [Documents]
+      summary: Save a new document
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaveDocument' }
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  document: { $ref: '#/components/schemas/SavedDocument' }
+
+  /documents/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Documents]
+      summary: Fetch a saved document
+      responses:
+        '200':
+          description: The document
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  document: { $ref: '#/components/schemas/SavedDocument' }
+        '404': { description: Not found }
+    patch:
+      tags: [Documents]
+      summary: Update a saved document
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaveDocument' }
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [Documents]
+      summary: Delete a saved document
+      responses:
+        '200': { description: Deleted }
+
+  /documents/{id}/versions:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Versions]
+      summary: List the document's saved versions (newest first, up to 50)
+      responses:
+        '200':
+          description: Version summaries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  items: { type: array, items: { $ref: '#/components/schemas/DocumentVersionSummary' } }
+
+  /documents/{id}/versions/{vid}:
+    parameters:
+      - { in: path, name: id,  required: true, schema: { type: integer, format: int64 } }
+      - { in: path, name: vid, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Versions]
+      summary: Fetch a single past version
+      responses:
+        '200':
+          description: Full version contents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  version: { $ref: '#/components/schemas/DocumentVersion' }
+
+  /documents/{id}/versions/{vid}/restore:
+    parameters:
+      - { in: path, name: id,  required: true, schema: { type: integer, format: int64 } }
+      - { in: path, name: vid, required: true, schema: { type: integer, format: int64 } }
+    post:
+      tags: [Versions]
+      summary: Replace the live document with this prior version
+      description: |
+        Snapshots the current state first, so the restore itself is
+        reversible.
+      responses:
+        '200':
+          description: Restored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  document: { $ref: '#/components/schemas/SavedDocument' }
+
+  /documents/{id}/decrypt:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+    post:
+      tags: [Encryption]
+      summary: Decrypt an at-rest-encrypted document
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string, minLength: 8 }
+      responses:
+        '200':
+          description: Plaintext content
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  content: { type: string }
+        '400': { description: Document is not encrypted }
+        '401': { description: Wrong password }
+
+  /documents/{id}/shares:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Shares]
+      summary: List share links for a document
+      responses:
+        '200':
+          description: Active shares
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  items: { type: array, items: { $ref: '#/components/schemas/ShareLink' } }
+    post:
+      tags: [Shares]
+      summary: Create a new share link (premium)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [format]
+              properties:
+                format: { type: string, enum: [html, pdf] }
+                expires_in_seconds: { type: integer, nullable: true }
+                password: { type: string, nullable: true, minLength: 8 }
+      responses:
+        '200':
+          description: |
+            Share created. **The plaintext `token` is shown only here**;
+            store it.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  share: { $ref: '#/components/schemas/ShareLink' }
+                  url:   { type: string, example: /s/abc123 }
+                  token: { type: string }
+
+  /shares/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+    delete:
+      tags: [Shares]
+      summary: Revoke a share
+      responses:
+        '200': { description: Revoked }
+
+  /share/{token}:
+    parameters:
+      - { in: path, name: token, required: true, schema: { type: string } }
+    get:
+      tags: [Shares]
+      summary: Public share metadata
+      security: []
+      responses:
+        '200':
+          description: Metadata about the share (does NOT require password)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  format: { type: string, enum: [html, pdf] }
+                  requires_password: { type: boolean }
+                  expires_at: { type: integer, nullable: true }
+    post:
+      tags: [Shares]
+      summary: View / download the shared document
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password: { type: string, nullable: true }
+      responses:
+        '200':
+          description: Rendered shared document
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  title: { type: string }
+                  format: { type: string, enum: [html, pdf] }
+                  rendered_html: { type: string, nullable: true }
+
+  /templates:
+    get:
+      tags: [Templates]
+      summary: List your templates (premium)
+      responses:
+        '200':
+          description: Templates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  items: { type: array, items: { $ref: '#/components/schemas/Template' } }
+    post:
+      tags: [Templates]
+      summary: Create a template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaveTemplate' }
+      responses:
+        '200':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  template: { $ref: '#/components/schemas/Template' }
+
+  /templates/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Templates]
+      summary: Fetch one template
+      responses:
+        '200':
+          description: Template
+    patch:
+      tags: [Templates]
+      summary: Update a template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaveTemplate' }
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [Templates]
+      summary: Delete a template
+      responses:
+        '200': { description: Deleted }
+
+  /keys:
+    get:
+      tags: [API keys]
+      summary: List your API keys (premium)
+      responses:
+        '200':
+          description: Keys (hashes only; the plaintext never returns again)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  items: { type: array, items: { $ref: '#/components/schemas/ApiKey' } }
+    post:
+      tags: [API keys]
+      summary: Create a new API key — the plaintext is shown ONCE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        '200':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  key: { $ref: '#/components/schemas/ApiKey' }
+                  plaintext: { type: string, description: Show once; never returned again. }
+
+  /keys/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+    delete:
+      tags: [API keys]
+      summary: Revoke a key
+      responses:
+        '200': { description: Revoked }
+
+  /usage:
+    get:
+      tags: [Usage]
+      summary: Rolling 30-day usage summary for the current account
+      responses:
+        '200':
+          description: Usage
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  usage:
+                    type: object
+                    properties:
+                      used:         { type: integer }
+                      limit:        { type: integer }
+                      period_start: { type: integer }
+
+  /jobs:
+    get:
+      tags: [Jobs]
+      summary: List your async jobs (premium, newest first, up to 100)
+      responses:
+        '200':
+          description: Jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  items: { type: array, items: { $ref: '#/components/schemas/Job' } }
+
+  /jobs/convert:
+    post:
+      tags: [Jobs]
+      summary: Enqueue an async conversion (premium)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConvertRequest' }
+      responses:
+        '200':
+          description: Job queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  job_id: { type: integer, format: int64 }
+                  status: { type: string, example: queued }
+
+  /jobs/batch:
+    post:
+      tags: [Jobs]
+      summary: Enqueue an async batch (premium)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BatchRequest' }
+      responses:
+        '200':
+          description: Job queued
+
+  /jobs/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Jobs]
+      summary: Poll job status / result
+      responses:
+        '200':
+          description: Job
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  job: { $ref: '#/components/schemas/Job' }
+
+  /jobs/{id}/cancel:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+    post:
+      tags: [Jobs]
+      summary: Cancel a queued job
+      responses:
+        '200': { description: Canceled }
+
+  /extract:
+    post:
+      tags: [Extract]
+      summary: PDF → Markdown (premium)
+      description: |
+        Uses `poppler-utils` first; falls back to `tesseract-ocr-eng` OCR
+        when pdftotext yields sparse output (or when `ocr: "force"`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pdf_base64]
+              properties:
+                pdf_base64: { type: string, format: byte }
+                ocr: { type: string, enum: [auto, force, off], default: auto }
+      responses:
+        '200':
+          description: Extracted text
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  method: { type: string, enum: [pdftotext, ocr] }
+                  markdown: { type: string }
+                  page_count: { type: integer, nullable: true }
+
+  /url-watches:
+    get:
+      tags: [URL watches]
+      summary: List your URL watches (premium)
+      responses:
+        '200':
+          description: Watches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  items: { type: array, items: { $ref: '#/components/schemas/UrlWatch' } }
+    post:
+      tags: [URL watches]
+      summary: Create a new URL watch (premium)
+      description: |
+        Every `poll_interval_secs` the worker fetches `url`. When the
+        content hash differs from the previous poll it runs a
+        conversion (`input_type` → `output_format`) and POSTs the result
+        to `target_url`. If `target_secret` is set the body is HMAC-
+        SHA256 signed and the digest goes in `X-UDC-Signature`.
+        Minimum poll interval is 60 seconds; maximum is 7 days.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaveUrlWatch' }
+      responses:
+        '200':
+          description: Watch created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  watch: { $ref: '#/components/schemas/UrlWatch' }
+
+  /url-watches/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [URL watches]
+      summary: Fetch one watch
+      responses:
+        '200': { description: Watch }
+    patch:
+      tags: [URL watches]
+      summary: Update a watch (replaces every field)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaveUrlWatch' }
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [URL watches]
+      summary: Delete a watch
+      responses:
+        '200': { description: Deleted }
+
+  /images:
+    get:
+      tags: [Images]
+      summary: List your uploaded images
+      responses:
+        '200':
+          description: Images
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  items: { type: array, items: { $ref: '#/components/schemas/ImageMeta' } }
+    post:
+      tags: [Images]
+      summary: Upload an image
+      description: |
+        ≤10 MiB per file, ≤256 MiB per user, deduplicated by SHA-256.
+        Supported types: PNG, JPEG, GIF, WebP, SVG.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [filename, content_type, data_base64]
+              properties:
+                filename: { type: string }
+                content_type: { type: string }
+                data_base64: { type: string, format: byte }
+      responses:
+        '200':
+          description: Image stored (or deduped to an existing one)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  image: { $ref: '#/components/schemas/ImageUploadResult' }
+
+  /images/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Images]
+      summary: Serve the raw image bytes
+      responses:
+        '200':
+          description: Bytes
+          content:
+            'image/*':
+              schema: { type: string, format: binary }
+    delete:
+      tags: [Images]
+      summary: Delete an image
+      responses:
+        '200': { description: Deleted }
+
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: List all users (admin)
+      responses:
+        '200':
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  items: { type: array, items: { $ref: '#/components/schemas/PublicUser' } }
+
+  /admin/users/{id}/role:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+    post:
+      tags: [Admin]
+      summary: Change a user's role (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { type: string, enum: [free, premium, admin] }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  user: { $ref: '#/components/schemas/PublicUser' }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
+      description: HttpOnly session token set by `/auth/login`.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Premium API key from `/keys`.
+
+  schemas:
+    Credentials:
+      type: object
+      required: [email, password]
+      properties:
+        email:    { type: string, format: email }
+        password: { type: string, minLength: 8 }
+
+    PublicUser:
+      type: object
+      properties:
+        id:         { type: integer, format: int64 }
+        email:      { type: string, format: email }
+        role:       { type: string, enum: [free, premium, admin] }
+        created_at: { type: integer }
+
+    PdfMargin:
+      type: object
+      properties:
+        top:    { type: string, example: 1in }
+        right:  { type: string, example: 1in }
+        bottom: { type: string, example: 1in }
+        left:   { type: string, example: 1in }
+
+    PdfCover:
+      type: object
+      properties:
+        title:    { type: string }
+        subtitle: { type: string }
+        author:   { type: string }
+        date:     { type: string }
+
+    PdfOptions:
+      type: object
+      description: Page-setup controls for PDF output (premium).
+      properties:
+        page_size:   { type: string, enum: [A4, A3, A5, Letter, Legal, Tabloid], default: A4 }
+        orientation: { type: string, enum: [portrait, landscape], default: portrait }
+        margin:      { $ref: '#/components/schemas/PdfMargin' }
+        page_numbers:    { type: boolean }
+        header_template: { type: string, description: HTML repeated on every page }
+        footer_template: { type: string }
+        cover: { $ref: '#/components/schemas/PdfCover' }
+
+    EnrichmentOptions:
+      type: object
+      description: Optional post-processing (premium).
+      properties:
+        toc: { type: boolean }
+        toc_depth: { type: integer, minimum: 1, maximum: 4, default: 3 }
+        syntax_highlight: { type: boolean }
+        math: { type: boolean, description: $LaTeX$ → MathML }
+        mermaid: { type: boolean }
+
+    ConvertFile:
+      type: object
+      required: [path, content]
+      properties:
+        path:    { type: string }
+        content: { type: string }
+
+    ConvertRequest:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [markdown, html, json, xml, csv, org, asciidoc, rst, latex]
+        output:  { type: string, enum: [html, pdf], default: html }
+        content: { type: string, default: "" }
+        files:   { type: array, items: { $ref: '#/components/schemas/ConvertFile' } }
+        title:   { type: string }
+        theme:   { type: string, enum: [default, clean, academic, resume, letter, github] }
+        custom_css:   { type: string }
+        pdf_options:  { $ref: '#/components/schemas/PdfOptions' }
+        template_id:  { type: integer, format: int64 }
+        enrichments:  { $ref: '#/components/schemas/EnrichmentOptions' }
+
+    ConvertResponse:
+      type: object
+      properties:
+        ok: { type: boolean }
+        output_type: { type: string, enum: [html, pdf] }
+        input_type: { type: string }
+        content:    { type: string, description: HTML output }
+        pdf_base64: { type: string, format: byte, description: PDF output }
+        warnings:   { type: array, items: { type: string } }
+
+    BatchRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 50
+          items: { $ref: '#/components/schemas/ConvertRequest' }
+        webhook:
+          type: object
+          properties:
+            url:    { type: string, format: uri }
+            secret: { type: string, description: HMAC-SHA256 over the JSON body, sent as X-UDC-Signature }
+
+    BatchItemResult:
+      type: object
+      properties:
+        index: { type: integer }
+        ok:    { type: boolean }
+        result: { $ref: '#/components/schemas/ConvertResponse' }
+        error:  { type: string }
+
+    BatchResponse:
+      type: object
+      properties:
+        ok: { type: boolean }
+        items: { type: array, items: { $ref: '#/components/schemas/BatchItemResult' } }
+        webhook_delivered: { type: boolean, nullable: true }
+
+    SaveDocument:
+      type: object
+      required: [title, type, output, content]
+      properties:
+        title:   { type: string, maxLength: 200 }
+        type:    { type: string }
+        output:  { type: string, enum: [html, pdf] }
+        content: { type: string }
+        rendered_html: { type: string }
+        theme:        { type: string, nullable: true }
+        custom_css:   { type: string, nullable: true }
+        pdf_options:  { $ref: '#/components/schemas/PdfOptions' }
+        encrypt_password: { type: string, nullable: true, minLength: 8 }
+        folder: { type: string, nullable: true }
+        tags:   { type: array, items: { type: string }, maxItems: 16 }
+
+    DocumentSummary:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        title: { type: string }
+        input_type: { type: string }
+        output_type: { type: string }
+        is_encrypted: { type: boolean }
+        folder: { type: string, nullable: true }
+        tags: { type: array, items: { type: string } }
+        created_at: { type: integer }
+        updated_at: { type: integer }
+
+    SavedDocument:
+      allOf:
+        - { $ref: '#/components/schemas/DocumentSummary' }
+        - type: object
+          properties:
+            user_id: { type: integer, format: int64 }
+            content: { type: string }
+            rendered_html: { type: string, nullable: true }
+            theme:         { type: string, nullable: true }
+            custom_css:    { type: string, nullable: true }
+            pdf_options:   { type: string, nullable: true, description: JSON-encoded }
+            encryption_salt: { type: string, nullable: true }
+
+    DocumentVersionSummary:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        document_id: { type: integer, format: int64 }
+        version: { type: integer }
+        title:   { type: string }
+        content_bytes: { type: integer }
+        created_at: { type: integer }
+
+    DocumentVersion:
+      allOf:
+        - { $ref: '#/components/schemas/DocumentVersionSummary' }
+        - type: object
+          properties:
+            input_type: { type: string }
+            output_type: { type: string }
+            content: { type: string }
+            rendered_html: { type: string, nullable: true }
+            theme: { type: string, nullable: true }
+            custom_css: { type: string, nullable: true }
+            pdf_options: { type: string, nullable: true }
+
+    Template:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64 }
+        name: { type: string }
+        theme: { type: string, nullable: true }
+        custom_css: { type: string, nullable: true }
+        pdf_options: { type: string, nullable: true }
+        created_at: { type: integer }
+        updated_at: { type: integer }
+
+    SaveTemplate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        theme: { type: string, nullable: true }
+        custom_css: { type: string, nullable: true }
+        pdf_options: { $ref: '#/components/schemas/PdfOptions' }
+
+    ApiKey:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64 }
+        name: { type: string }
+        prefix: { type: string }
+        created_at: { type: integer }
+        last_used_at: { type: integer, nullable: true }
+
+    Job:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        kind:   { type: string, enum: [convert, batch] }
+        status: { type: string, enum: [queued, running, done, failed, canceled] }
+        error_message: { type: string, nullable: true }
+        result: {}
+        created_at:  { type: integer }
+        started_at:  { type: integer, nullable: true }
+        finished_at: { type: integer, nullable: true }
+
+    ShareLink:
+      type: object
+      properties:
+        id:          { type: integer, format: int64 }
+        document_id: { type: integer, format: int64 }
+        user_id:     { type: integer, format: int64 }
+        prefix: { type: string }
+        format: { type: string, enum: [html, pdf] }
+        expires_at: { type: integer, nullable: true }
+        view_count: { type: integer }
+        created_at: { type: integer }
+
+    ImageMeta:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64 }
+        filename: { type: string }
+        content_type: { type: string }
+        size_bytes: { type: integer }
+        sha256: { type: string }
+        created_at: { type: integer }
+
+    ImageUploadResult:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        url: { type: string }
+        filename: { type: string }
+        content_type: { type: string }
+        size_bytes: { type: integer }
+        created_at: { type: integer }
+
+    SaveUrlWatch:
+      type: object
+      required: [name, url, input_type, output_format, target_url]
+      properties:
+        name:           { type: string, maxLength: 80 }
+        url:            { type: string, format: uri, description: HTTP(S) source to poll }
+        input_type:
+          type: string
+          enum: [markdown, html, json, xml, csv, org, asciidoc, rst, latex]
+        output_format:
+          type: string
+          enum: [html, pdf]
+          description: Only HTML and PDF deliveries are supported for watches; binary outputs would balloon the webhook payload.
+        target_url:     { type: string, format: uri, description: Where to POST the conversion result }
+        target_secret:  { type: string, nullable: true, description: HMAC-SHA256 secret for X-UDC-Signature }
+        poll_interval_secs:
+          type: integer
+          minimum: 60
+          maximum: 604800
+          default: 900
+        enabled: { type: boolean, default: true }
+
+    UrlWatch:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64 }
+        name: { type: string }
+        url: { type: string, format: uri }
+        input_type: { type: string }
+        output_format: { type: string, enum: [html, pdf] }
+        target_url: { type: string, format: uri }
+        has_secret: { type: boolean }
+        poll_interval_secs: { type: integer }
+        enabled: { type: boolean }
+        last_seen_at: { type: integer, nullable: true }
+        last_polled_at: { type: integer, nullable: true }
+        last_delivered_at: { type: integer, nullable: true }
+        last_error: { type: string, nullable: true }
+        created_at: { type: integer }
+        updated_at: { type: integer }
+
+    Error:
+      type: object
+      properties:
+        ok: { type: boolean, example: false }
+        error: { type: string }

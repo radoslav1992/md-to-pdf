@@ -1,0 +1,40 @@
+name: Build PDF from README (example)
+
+# Wired up as a workflow_dispatch so it doesn't run on every push; this
+# file mainly exists to show how downstream consumers would use the
+# `convert` action.
+on:
+  workflow_dispatch:
+    inputs:
+      input:
+        description: 'Source file in the repo (defaults to README.md)'
+        required: false
+        default: 'README.md'
+      format:
+        description: 'pdf or html'
+        required: false
+        default: 'pdf'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (needed by the action's installer)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Convert
+        id: convert
+        uses: ./.github/actions/convert
+        with:
+          base-url: ${{ vars.UDC_BASE_URL }}
+          api-key:  ${{ secrets.UDC_API_KEY }}
+          input:    ${{ inputs.input }}
+          format:   ${{ inputs.format }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: converted
+          path: ${{ steps.convert.outputs.output-path }}
+          if-no-files-found: error
