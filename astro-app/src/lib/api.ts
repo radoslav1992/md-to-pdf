@@ -57,6 +57,13 @@ export interface ConvertFile {
   content: string;
 }
 
+export interface EnrichmentOptions {
+  toc?: boolean;
+  toc_depth?: number;
+  syntax_highlight?: boolean;
+  math?: boolean;
+}
+
 export interface ConvertPayload {
   type: string;
   output: 'html' | 'pdf';
@@ -66,6 +73,62 @@ export interface ConvertPayload {
   theme?: string;
   custom_css?: string;
   pdf_options?: PdfOptions;
+  template_id?: number;
+  enrichments?: EnrichmentOptions;
+}
+
+export interface Template {
+  id: number;
+  user_id: number;
+  name: string;
+  theme: string | null;
+  custom_css: string | null;
+  pdf_options: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface SaveTemplatePayload {
+  name: string;
+  theme?: string | null;
+  custom_css?: string | null;
+  pdf_options?: PdfOptions | null;
+}
+
+export interface ApiKey {
+  id: number;
+  user_id: number;
+  name: string;
+  prefix: string;
+  created_at: number;
+  last_used_at: number | null;
+}
+
+export interface UsageSummary {
+  used: number;
+  limit: number;
+  period_start: number;
+}
+
+export interface BatchItemResult {
+  index: number;
+  ok: boolean;
+  result?: ConvertResult;
+  error?: string;
+}
+
+export interface BatchResponse {
+  ok: boolean;
+  items: BatchItemResult[];
+  webhook_delivered: boolean | null;
+}
+
+export interface BatchPayload {
+  items: ConvertPayload[];
+  webhook?: {
+    url: string;
+    secret?: string;
+  };
 }
 
 export interface SaveDocumentPayload {
@@ -158,5 +221,38 @@ export const api = {
     request<{ ok: true; user: PublicUser }>(`/api/admin/users/${id}/role`, {
       method: 'POST',
       body: JSON.stringify({ role }),
+    }),
+
+  listTemplates: () => request<{ ok: true; items: Template[] }>('/api/templates'),
+  getTemplate: (id: number) =>
+    request<{ ok: true; template: Template }>(`/api/templates/${id}`),
+  createTemplate: (payload: SaveTemplatePayload) =>
+    request<{ ok: true; template: Template }>('/api/templates', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateTemplate: (id: number, payload: SaveTemplatePayload) =>
+    request<{ ok: true; template: Template }>(`/api/templates/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteTemplate: (id: number) =>
+    request<{ ok: true }>(`/api/templates/${id}`, { method: 'DELETE' }),
+
+  listKeys: () => request<{ ok: true; items: ApiKey[] }>('/api/keys'),
+  createKey: (name: string) =>
+    request<{ ok: true; key: ApiKey; plaintext: string }>('/api/keys', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  revokeKey: (id: number) =>
+    request<{ ok: true }>(`/api/keys/${id}`, { method: 'DELETE' }),
+
+  usage: () => request<{ ok: true; usage: UsageSummary }>('/api/usage'),
+
+  batchConvert: (payload: BatchPayload) =>
+    request<BatchResponse>('/api/convert/batch', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     }),
 };

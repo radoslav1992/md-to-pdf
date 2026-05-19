@@ -1,5 +1,11 @@
-import { useCallback, useMemo, useState } from 'react';
-import { api, type ConvertResult, type PdfOptions } from '../lib/api';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  api,
+  type ConvertResult,
+  type EnrichmentOptions,
+  type PdfOptions,
+  type Template,
+} from '../lib/api';
 import { useUser } from '../lib/useUser';
 
 type InputType =
@@ -125,6 +131,14 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
     initialData?.pdf_options ?? DEFAULT_PDF_OPTIONS,
   );
   const [stylePanelOpen, setStylePanelOpen] = useState(false);
+  const [enrichments, setEnrichments] = useState<EnrichmentOptions>({
+    toc: false,
+    toc_depth: 3,
+    syntax_highlight: false,
+    math: false,
+  });
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templateId, setTemplateId] = useState<number | null>(null);
   const [result, setResult] = useState<ConvertResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -134,6 +148,25 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
 
   const isAuthed = userState.status === 'authed';
   const isPremium = isAuthed && (userState.user.role === 'premium' || userState.user.role === 'admin');
+
+  useEffect(() => {
+    if (!isPremium) {
+      setTemplates([]);
+      return;
+    }
+    let cancelled = false;
+    api.listTemplates().then(
+      (res) => {
+        if (!cancelled) setTemplates(res.items);
+      },
+      () => {
+        if (!cancelled) setTemplates([]);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [isPremium]);
 
   const onTypeChange = useCallback((next: InputType) => {
     setInputType(next);
@@ -147,6 +180,10 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
   const themeOrDefault = isPremium ? theme : 'default';
   const customCssToSend = isPremium && customCss.trim() ? customCss : undefined;
   const pdfOptionsToSend = isPremium && outputType === 'pdf' ? pdfOptions : undefined;
+  const enrichmentsActive =
+    isPremium && (enrichments.toc || enrichments.syntax_highlight || enrichments.math);
+  const enrichmentsToSend = enrichmentsActive ? enrichments : undefined;
+  const templateIdToSend = isPremium && templateId !== null ? templateId : undefined;
 
   const convert = useCallback(async () => {
     setLoading(true);
@@ -163,6 +200,8 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
         theme: themeOrDefault,
         custom_css: customCssToSend,
         pdf_options: pdfOptionsToSend,
+        enrichments: enrichmentsToSend,
+        template_id: templateIdToSend,
       });
       setResult(res);
     } catch (err) {
@@ -170,7 +209,17 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
     } finally {
       setLoading(false);
     }
-  }, [inputType, outputType, content, title, themeOrDefault, customCssToSend, pdfOptionsToSend]);
+  }, [
+    inputType,
+    outputType,
+    content,
+    title,
+    themeOrDefault,
+    customCssToSend,
+    pdfOptionsToSend,
+    enrichmentsToSend,
+    templateIdToSend,
+  ]);
 
   const save = useCallback(async () => {
     if (!isAuthed) {
@@ -330,6 +379,72 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                   </option>
                 ))}
               </select>
+              {templates.length > 0 && (
+                <>
+                  <label className="text-xs font-medium text-slate-700 ml-4">Template</label>
+                  <select
+                    value={templateId ?? ''}
+                    onChange={(e) =>
+                      setTemplateId(e.target.value ? parseInt(e.target.value, 10) : null)
+                    }
+                    className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                  >
+                    <option value="">— none —</option>
+                    {templates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                  <a
+                    href="/templates"
+                    className="text-xs text-brand-600 hover:text-brand-700 underline"
+                  >
+                    Manage
+                  </a>
+                </>
+              )}
+              {isPremium && templates.length === 0 && (
+                <a
+                  href="/templates"
+                  className="text-xs text-brand-600 hover:text-brand-700 underline ml-2"
+                >
+                  Create a template →
+                </a>
+              )}
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-4 text-sm text-slate-700">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={enrichments.toc ?? false}
+                  onChange={(e) =>
+                    setEnrichments({ ...enrichments, toc: e.target.checked })
+                  }
+                />
+                Table of contents
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={enrichments.syntax_highlight ?? false}
+                  onChange={(e) =>
+                    setEnrichments({ ...enrichments, syntax_highlight: e.target.checked })
+                  }
+                />
+                Syntax highlighting
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={enrichments.math ?? false}
+                  onChange={(e) =>
+                    setEnrichments({ ...enrichments, math: e.target.checked })
+                  }
+                />
+                Math ($LaTeX$ → MathML)
+              </label>
             </div>
 
             {outputType === 'pdf' && (

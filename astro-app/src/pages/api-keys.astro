@@ -1,0 +1,17 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import ApiKeyList from '../components/ApiKeyList.tsx';
+---
+
+<BaseLayout title="API keys — Universal Document Converter">
+  <section class="max-w-3xl mx-auto px-4 py-10">
+    <div class="mb-6">
+      <h1 class="text-3xl font-bold text-slate-900">API keys</h1>
+      <p class="mt-2 text-slate-600">
+        Programmatic access for premium users. Each key is shown in full once and stored
+        as a SHA-256 hash. Conversions count against your monthly quota.
+      </p>
+    </div>
+    <ApiKeyList client:load />
+  </section>
+</BaseLayout>

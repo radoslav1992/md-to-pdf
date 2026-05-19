@@ -2,9 +2,19 @@ use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use serde::Deserialize;
 use sqlx::SqlitePool;
 
+use crate::api_keys;
 use crate::crypto;
 use crate::db::{now_seconds, AppState, User};
 use crate::error::ConvertError;
+
+/// Outcome of resolving credentials for a request. We track the API key id
+/// (when present) so usage events can be attributed to the specific token
+/// that was used.
+#[derive(Debug, Clone)]
+pub struct AuthCtx {
+    pub user: User,
+    pub api_key_id: Option<i64>,
+}
 
 pub const SESSION_COOKIE: &str = "session";
 const SESSION_TTL_SECONDS: i64 = 60 * 60 * 24 * 30; // 30 days
@@ -104,6 +114,43 @@ pub async fn current_user(state: &AppState, jar: &CookieJar) -> Result<Option<Us
 
 pub async fn require_user(state: &AppState, jar: &CookieJar) -> Result<User, ConvertError> {
     current_user(state, jar)
+        .await?
+        .ok_or(ConvertError::Unauthorized)
+}
+
+/// Resolve a request to a user, accepting either a session cookie or a
+/// `Authorization: Bearer <key>` header. Returns `None` if neither is
+/// present or valid (i.e. anonymous).
+pub async fn resolve(
+    state: &AppState,
+    jar: &CookieJar,
+    authorization: Option<&str>,
+) -> Result<Option<AuthCtx>, ConvertError> {
+    if let Some(header) = authorization {
+        if let Some(token) = api_keys::parse_bearer(header) {
+            if let Some((key, user)) = api_keys::lookup(&state.pool, token).await? {
+                api_keys::touch(&state.pool, key.id).await;
+                return Ok(Some(AuthCtx {
+                    user,
+                    api_key_id: Some(key.id),
+                }));
+            }
+            return Err(ConvertError::Unauthorized);
+        }
+    }
+    Ok(current_user(state, jar).await?.map(|user| AuthCtx {
+        user,
+        api_key_id: None,
+    }))
+}
+
+/// Like `resolve` but returns 401 if no credentials are valid.
+pub async fn require(
+    state: &AppState,
+    jar: &CookieJar,
+    authorization: Option<&str>,
+) -> Result<AuthCtx, ConvertError> {
+    resolve(state, jar, authorization)
         .await?
         .ok_or(ConvertError::Unauthorized)
 }

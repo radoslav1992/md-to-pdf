@@ -1,26 +1,33 @@
 use std::net::SocketAddr;
 
-use axum::extract::{DefaultBodyLimit, Path, State};
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
+use axum::body::Body;
+use axum::extract::{DefaultBodyLimit, Path, Query, State};
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_extra::extract::cookie::CookieJar;
+use serde::Deserialize;
 use serde_json::json;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
 mod admin;
+mod api_keys;
 mod auth;
+mod batch;
 mod convert;
 mod crypto;
 mod db;
 mod documents;
+mod enrichments;
 mod error;
 mod pandoc;
 mod pdf;
+mod templates;
 mod themes;
+mod usage;
 
 use crate::db::AppState;
 use crate::error::ConvertError;
@@ -70,6 +77,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/auth/logout", post(logout))
         .route("/api/auth/me", get(me))
         .route("/api/convert", post(convert_handler))
+        .route("/api/convert/batch", post(batch_handler))
         .route("/api/documents", get(documents_list).post(documents_create))
         .route(
             "/api/documents/{id}",
@@ -77,6 +85,19 @@ async fn main() -> anyhow::Result<()> {
                 .patch(documents_update)
                 .delete(documents_delete),
         )
+        .route(
+            "/api/templates",
+            get(templates_list).post(templates_create),
+        )
+        .route(
+            "/api/templates/{id}",
+            get(templates_get)
+                .patch(templates_update)
+                .delete(templates_delete),
+        )
+        .route("/api/keys", get(keys_list).post(keys_create))
+        .route("/api/keys/{id}", axum::routing::delete(keys_revoke))
+        .route("/api/usage", get(usage_handler))
         .route("/api/admin/users", get(admin_users))
         .route("/api/admin/users/{id}/role", post(admin_update_role))
         .fallback(not_found)
@@ -152,14 +173,71 @@ async fn me(
 
 // ---------- Conversion ----------
 
+fn authorization_header(headers: &HeaderMap) -> Option<&str> {
+    headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()
+}
+
 async fn convert_handler(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     Json(body): Json<convert::ConvertRequest>,
 ) -> Result<Json<convert::ConvertResponse>, ConvertError> {
-    let user = auth::current_user(&state, &jar).await?;
-    let res = convert::run(&body, &state, user.as_ref()).await?;
+    let ctx = auth::resolve(&state, &jar, authorization_header(&headers)).await?;
+    if let Some(ctx) = &ctx {
+        usage::reserve(&state.pool, &ctx.user, ctx.api_key_id, "convert", 1).await?;
+    }
+    let res = convert::run(&body, &state, ctx.as_ref().map(|c| &c.user)).await?;
     Ok(Json(res))
+}
+
+// ---------- Batch ----------
+
+#[derive(Debug, Deserialize)]
+struct BatchQuery {
+    #[serde(default)]
+    format: Option<String>,
+}
+
+async fn batch_handler(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Query(query): Query<BatchQuery>,
+    Json(body): Json<batch::BatchRequest>,
+) -> Result<Response, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    if !ctx.user.is_premium() {
+        return Err(ConvertError::PremiumRequired);
+    }
+    batch::validate(&body)?;
+    usage::reserve(
+        &state.pool,
+        &ctx.user,
+        ctx.api_key_id,
+        "batch",
+        body.items.len() as i64,
+    )
+    .await?;
+    let result = batch::run(&body, &state, &ctx.user).await?;
+    let want_zip = query.format.as_deref() == Some("zip");
+    if want_zip {
+        let bytes = batch::to_zip(&result)?;
+        let mut resp = Response::builder()
+            .status(StatusCode::OK)
+            .header("content-type", "application/zip")
+            .header("content-disposition", "attachment; filename=\"batch.zip\"")
+            .body(Body::from(bytes))
+            .map_err(|e| ConvertError::Internal(format!("zip response: {e}")))?;
+        if let Some(delivered) = result.webhook_delivered {
+            if let Ok(value) = axum::http::HeaderValue::from_str(&delivered.to_string()) {
+                resp.headers_mut().insert("x-udc-webhook-delivered", value);
+            }
+        }
+        Ok(resp)
+    } else {
+        Ok((StatusCode::OK, Json(result)).into_response())
+    }
 }
 
 // ---------- Documents ----------
@@ -220,6 +298,125 @@ async fn documents_delete(
     let user = auth::require_user(&state, &jar).await?;
     documents::delete(&state.pool, &user, id).await?;
     Ok(Json(json!({ "ok": true })))
+}
+
+// ---------- Templates ----------
+
+fn require_premium(user: &crate::db::User) -> Result<(), ConvertError> {
+    if user.is_premium() {
+        Ok(())
+    } else {
+        Err(ConvertError::PremiumRequired)
+    }
+}
+
+async fn templates_list(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    let items = templates::list(&state.pool, &ctx.user).await?;
+    Ok(Json(json!({ "ok": true, "items": items })))
+}
+
+async fn templates_get(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    let t = templates::get(&state.pool, &ctx.user, id).await?;
+    Ok(Json(json!({ "ok": true, "template": t })))
+}
+
+async fn templates_create(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Json(payload): Json<templates::SaveTemplate>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    let t = templates::create(&state.pool, &ctx.user, &payload).await?;
+    Ok(Json(json!({ "ok": true, "template": t })))
+}
+
+async fn templates_update(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+    Json(payload): Json<templates::SaveTemplate>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    let t = templates::update(&state.pool, &ctx.user, id, &payload).await?;
+    Ok(Json(json!({ "ok": true, "template": t })))
+}
+
+async fn templates_delete(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    templates::delete(&state.pool, &ctx.user, id).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+// ---------- API keys ----------
+
+async fn keys_list(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    let items = api_keys::list(&state.pool, &ctx.user).await?;
+    Ok(Json(json!({ "ok": true, "items": items })))
+}
+
+async fn keys_create(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Json(payload): Json<api_keys::CreateKey>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    let (key, plaintext) = api_keys::create(&state.pool, &ctx.user, &payload).await?;
+    Ok(Json(json!({ "ok": true, "key": key, "plaintext": plaintext })))
+}
+
+async fn keys_revoke(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    api_keys::revoke(&state.pool, &ctx.user, id).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+// ---------- Usage ----------
+
+async fn usage_handler(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    let summary = usage::summary(&state.pool, &ctx.user).await?;
+    Ok(Json(json!({ "ok": true, "usage": summary })))
 }
 
 // ---------- Admin ----------
