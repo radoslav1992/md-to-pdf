@@ -5,7 +5,7 @@ use crate::error::ConvertError;
 use sqlx::SqlitePool;
 
 const MAX_TITLE: usize = 200;
-const MAX_CONTENT: usize = 4 * 1024 * 1024;
+const MAX_CONTENT: usize = 16 * 1024 * 1024;
 
 #[derive(Debug, Deserialize)]
 pub struct SaveDocument {
@@ -15,12 +15,18 @@ pub struct SaveDocument {
     pub output: String,
     pub content: String,
     pub rendered_html: Option<String>,
+    #[serde(default)]
+    pub theme: Option<String>,
+    #[serde(default)]
+    pub custom_css: Option<String>,
+    #[serde(default)]
+    pub pdf_options: Option<serde_json::Value>,
 }
 
 pub async fn list(pool: &SqlitePool, user: &User) -> Result<Vec<DocumentSummary>, ConvertError> {
     let docs: Vec<Document> = sqlx::query_as(
         "SELECT id, user_id, title, input_type, output_type, content, rendered_html, \
-                created_at, updated_at \
+                theme, custom_css, pdf_options, created_at, updated_at \
          FROM documents WHERE user_id = ?1 ORDER BY updated_at DESC",
     )
     .bind(user.id)
@@ -32,7 +38,7 @@ pub async fn list(pool: &SqlitePool, user: &User) -> Result<Vec<DocumentSummary>
 pub async fn get(pool: &SqlitePool, user: &User, id: i64) -> Result<Document, ConvertError> {
     let doc: Option<Document> = sqlx::query_as(
         "SELECT id, user_id, title, input_type, output_type, content, rendered_html, \
-                created_at, updated_at \
+                theme, custom_css, pdf_options, created_at, updated_at \
          FROM documents WHERE id = ?1 AND user_id = ?2",
     )
     .bind(id)
@@ -62,10 +68,15 @@ pub async fn save(
 
     let now = now_seconds();
     let rendered = payload.rendered_html.clone().unwrap_or_default();
+    let pdf_options_json = payload
+        .pdf_options
+        .as_ref()
+        .and_then(|v| serde_json::to_string(v).ok());
     let row: (i64,) = sqlx::query_as(
         "INSERT INTO documents \
-         (user_id, title, input_type, output_type, content, rendered_html, created_at, updated_at) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7) RETURNING id",
+         (user_id, title, input_type, output_type, content, rendered_html, \
+          theme, custom_css, pdf_options, created_at, updated_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10) RETURNING id",
     )
     .bind(user.id)
     .bind(title)
@@ -73,6 +84,9 @@ pub async fn save(
     .bind(&payload.output)
     .bind(&payload.content)
     .bind(&rendered)
+    .bind(payload.theme.as_deref())
+    .bind(payload.custom_css.as_deref())
+    .bind(pdf_options_json.as_deref())
     .bind(now)
     .fetch_one(pool)
     .await?;
@@ -100,16 +114,24 @@ pub async fn update(
 
     let now = now_seconds();
     let rendered = payload.rendered_html.clone().unwrap_or_default();
-    
+    let pdf_options_json = payload
+        .pdf_options
+        .as_ref()
+        .and_then(|v| serde_json::to_string(v).ok());
+
     let result = sqlx::query(
         "UPDATE documents SET title = ?1, input_type = ?2, output_type = ?3, content = ?4, \
-         rendered_html = ?5, updated_at = ?6 WHERE id = ?7 AND user_id = ?8",
+         rendered_html = ?5, theme = ?6, custom_css = ?7, pdf_options = ?8, updated_at = ?9 \
+         WHERE id = ?10 AND user_id = ?11",
     )
     .bind(title)
     .bind(&payload.input_type)
     .bind(&payload.output)
     .bind(&payload.content)
     .bind(&rendered)
+    .bind(payload.theme.as_deref())
+    .bind(payload.custom_css.as_deref())
+    .bind(pdf_options_json.as_deref())
     .bind(now)
     .bind(id)
     .bind(user.id)

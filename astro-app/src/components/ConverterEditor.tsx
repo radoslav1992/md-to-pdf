@@ -1,8 +1,17 @@
 import { useCallback, useMemo, useState } from 'react';
-import { api, type ConvertResult } from '../lib/api';
+import { api, type ConvertResult, type PdfOptions } from '../lib/api';
 import { useUser } from '../lib/useUser';
 
-type InputType = 'markdown' | 'html' | 'json' | 'xml';
+type InputType =
+  | 'markdown'
+  | 'html'
+  | 'json'
+  | 'xml'
+  | 'csv'
+  | 'org'
+  | 'asciidoc'
+  | 'rst'
+  | 'latex';
 type OutputType = 'html' | 'pdf';
 
 interface Props {
@@ -14,6 +23,9 @@ interface Props {
     type: InputType;
     output: OutputType;
     content: string;
+    theme?: string | null;
+    custom_css?: string | null;
+    pdf_options?: PdfOptions | null;
   };
 }
 
@@ -41,9 +53,65 @@ console.log("converted at the edge");
   <title>Hello</title>
   <body>This is XML.</body>
 </document>`,
+  csv: `name,role,joined
+Alice,Engineer,2021-03-04
+Bob,Designer,2022-07-19
+Carol,PM,2020-11-30`,
+  org: `* Hello
+
+This is /Org-mode/. Try editing this content.
+
+- Bullet one
+- Bullet two
+`,
+  asciidoc: `= Hello
+
+This is AsciiDoc.
+
+* Bullet one
+* Bullet two
+
+[source,js]
+----
+console.log("converted via pandoc");
+----
+`,
+  rst: `Hello
+=====
+
+This is **reStructuredText**.
+
+* Bullet one
+* Bullet two
+`,
+  latex: `\\section{Hello}
+
+This is \\LaTeX{}.
+
+\\begin{itemize}
+  \\item Bullet one
+  \\item Bullet two
+\\end{itemize}
+`,
 };
 
-const PREMIUM_INPUTS: InputType[] = ['html', 'json', 'xml'];
+const PREMIUM_INPUTS: InputType[] = ['html', 'json', 'xml', 'csv', 'org', 'asciidoc', 'rst', 'latex'];
+
+const THEMES: { value: string; label: string; premium: boolean }[] = [
+  { value: 'default', label: 'Default', premium: false },
+  { value: 'clean', label: 'Clean', premium: true },
+  { value: 'academic', label: 'Academic', premium: true },
+  { value: 'resume', label: 'Resume', premium: true },
+  { value: 'letter', label: 'Letter', premium: true },
+  { value: 'github', label: 'GitHub', premium: true },
+];
+
+const DEFAULT_PDF_OPTIONS: PdfOptions = {
+  page_size: 'A4',
+  orientation: 'portrait',
+  margin: { top: '1in', right: '1in', bottom: '1in', left: '1in' },
+  page_numbers: false,
+};
 
 export default function ConverterEditor({ anonymousMode = false, initialData }: Props) {
   const userState = useUser();
@@ -51,6 +119,12 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
   const [outputType, setOutputType] = useState<OutputType>(initialData?.output ?? 'html');
   const [content, setContent] = useState<string>(initialData?.content ?? SAMPLES.markdown);
   const [title, setTitle] = useState(initialData?.title ?? 'Untitled');
+  const [theme, setTheme] = useState<string>(initialData?.theme ?? 'default');
+  const [customCss, setCustomCss] = useState<string>(initialData?.custom_css ?? '');
+  const [pdfOptions, setPdfOptions] = useState<PdfOptions>(
+    initialData?.pdf_options ?? DEFAULT_PDF_OPTIONS,
+  );
+  const [stylePanelOpen, setStylePanelOpen] = useState(false);
   const [result, setResult] = useState<ConvertResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -70,6 +144,10 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
     setInfo(null);
   }, []);
 
+  const themeOrDefault = isPremium ? theme : 'default';
+  const customCssToSend = isPremium && customCss.trim() ? customCss : undefined;
+  const pdfOptionsToSend = isPremium && outputType === 'pdf' ? pdfOptions : undefined;
+
   const convert = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -77,14 +155,22 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
     setResult(null);
     setSavedId(null);
     try {
-      const res = await api.convert({ type: inputType, output: outputType, content, title });
+      const res = await api.convert({
+        type: inputType,
+        output: outputType,
+        content,
+        title,
+        theme: themeOrDefault,
+        custom_css: customCssToSend,
+        pdf_options: pdfOptionsToSend,
+      });
       setResult(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, [inputType, outputType, content, title]);
+  }, [inputType, outputType, content, title, themeOrDefault, customCssToSend, pdfOptionsToSend]);
 
   const save = useCallback(async () => {
     if (!isAuthed) {
@@ -95,23 +181,21 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
     setError(null);
     setInfo(null);
     try {
+      const payload = {
+        title: title.trim() || 'Untitled',
+        type: inputType,
+        output: outputType,
+        content,
+        rendered_html: result?.content ?? null,
+        theme: isPremium ? theme : null,
+        custom_css: isPremium && customCss.trim() ? customCss : null,
+        pdf_options: isPremium && outputType === 'pdf' ? pdfOptions : null,
+      };
       if (savedId) {
-        const res = await api.updateDocument(savedId, {
-          title: title.trim() || 'Untitled',
-          type: inputType,
-          output: outputType,
-          content,
-          rendered_html: result?.content ?? null,
-        });
+        const res = await api.updateDocument(savedId, payload);
         setInfo(`Updated document #${res.document.id}.`);
       } else {
-        const res = await api.saveDocument({
-          title: title.trim() || 'Untitled',
-          type: inputType,
-          output: outputType,
-          content,
-          rendered_html: result?.content ?? null,
-        });
+        const res = await api.saveDocument(payload);
         setSavedId(res.document.id);
         setInfo(`Saved to your dashboard (#${res.document.id}).`);
       }
@@ -120,7 +204,19 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
     } finally {
       setSaving(false);
     }
-  }, [isAuthed, savedId, title, inputType, outputType, content, result]);
+  }, [
+    isAuthed,
+    isPremium,
+    savedId,
+    title,
+    inputType,
+    outputType,
+    content,
+    result,
+    theme,
+    customCss,
+    pdfOptions,
+  ]);
 
   const previewSrcDoc = useMemo(() => {
     if (!result?.content) return '';
@@ -163,6 +259,11 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                 <option value="html">HTML {isPremium ? '' : '· Premium'}</option>
                 <option value="json">JSON {isPremium ? '' : '· Premium'}</option>
                 <option value="xml">XML {isPremium ? '' : '· Premium'}</option>
+                <option value="csv">CSV {isPremium ? '' : '· Premium'}</option>
+                <option value="org">Org-mode {isPremium ? '' : '· Premium'}</option>
+                <option value="asciidoc">AsciiDoc {isPremium ? '' : '· Premium'}</option>
+                <option value="rst">reStructuredText {isPremium ? '' : '· Premium'}</option>
+                <option value="latex">LaTeX {isPremium ? '' : '· Premium'}</option>
               </>
             )}
           </select>
@@ -202,9 +303,196 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
 
         {showPremiumLock && (
           <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-            HTML, JSON and XML inputs require a premium account. Markdown remains free for everyone.
+            HTML, JSON, XML, CSV, Org, AsciiDoc, RST and LaTeX inputs require a premium account.
+            Markdown remains free for everyone.
           </div>
         )}
+
+        <details
+          open={stylePanelOpen}
+          onToggle={(e) => setStylePanelOpen((e.target as HTMLDetailsElement).open)}
+          className="border border-slate-200 rounded-lg bg-slate-50/50"
+        >
+          <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-slate-700 select-none">
+            Styling & page setup {isPremium ? '' : '· Premium'}
+          </summary>
+          <div className={`p-3 border-t border-slate-200 ${isPremium ? '' : 'opacity-60 pointer-events-none'}`}>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="text-xs font-medium text-slate-700">Theme</label>
+              <select
+                value={theme}
+                onChange={(e) => setTheme(e.target.value)}
+                className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+              >
+                {THEMES.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {outputType === 'pdf' && (
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-slate-700 block mb-1">Page size</label>
+                  <select
+                    value={pdfOptions.page_size ?? 'A4'}
+                    onChange={(e) =>
+                      setPdfOptions({ ...pdfOptions, page_size: e.target.value })
+                    }
+                    className="w-full border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                  >
+                    <option value="A4">A4</option>
+                    <option value="A3">A3</option>
+                    <option value="A5">A5</option>
+                    <option value="Letter">Letter</option>
+                    <option value="Legal">Legal</option>
+                    <option value="Tabloid">Tabloid</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-700 block mb-1">Orientation</label>
+                  <select
+                    value={pdfOptions.orientation ?? 'portrait'}
+                    onChange={(e) =>
+                      setPdfOptions({
+                        ...pdfOptions,
+                        orientation: e.target.value as 'portrait' | 'landscape',
+                      })
+                    }
+                    className="w-full border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                  >
+                    <option value="portrait">Portrait</option>
+                    <option value="landscape">Landscape</option>
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-medium text-slate-700 block mb-1">
+                    Margins (top / right / bottom / left)
+                  </label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {(['top', 'right', 'bottom', 'left'] as const).map((side) => (
+                      <input
+                        key={side}
+                        type="text"
+                        placeholder="1in"
+                        value={pdfOptions.margin?.[side] ?? ''}
+                        onChange={(e) =>
+                          setPdfOptions({
+                            ...pdfOptions,
+                            margin: { ...pdfOptions.margin, [side]: e.target.value || undefined },
+                          })
+                        }
+                        className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                      />
+                    ))}
+                  </div>
+                </div>
+                <label className="col-span-2 flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={pdfOptions.page_numbers ?? false}
+                    onChange={(e) => setPdfOptions({ ...pdfOptions, page_numbers: e.target.checked })}
+                  />
+                  Page numbers (Chromium footer)
+                </label>
+                <div className="col-span-2">
+                  <label className="text-xs font-medium text-slate-700 block mb-1">
+                    Header HTML (appears on every page)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder='e.g. <span>Acme Corp — Confidential</span>'
+                    value={pdfOptions.header_template ?? ''}
+                    onChange={(e) =>
+                      setPdfOptions({ ...pdfOptions, header_template: e.target.value })
+                    }
+                    className="w-full border border-slate-300 rounded-md px-2 py-1 text-sm bg-white font-mono"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-medium text-slate-700 block mb-1">
+                    Footer HTML (appears on every page)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder='e.g. <span>© 2026 Acme</span>'
+                    value={pdfOptions.footer_template ?? ''}
+                    onChange={(e) =>
+                      setPdfOptions({ ...pdfOptions, footer_template: e.target.value })
+                    }
+                    className="w-full border border-slate-300 rounded-md px-2 py-1 text-sm bg-white font-mono"
+                  />
+                </div>
+                <fieldset className="col-span-2 border border-slate-200 rounded-md p-2 mt-1">
+                  <legend className="text-xs font-medium text-slate-700 px-1">Cover page</legend>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      placeholder="Title"
+                      value={pdfOptions.cover?.title ?? ''}
+                      onChange={(e) =>
+                        setPdfOptions({
+                          ...pdfOptions,
+                          cover: { ...pdfOptions.cover, title: e.target.value },
+                        })
+                      }
+                      className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Subtitle"
+                      value={pdfOptions.cover?.subtitle ?? ''}
+                      onChange={(e) =>
+                        setPdfOptions({
+                          ...pdfOptions,
+                          cover: { ...pdfOptions.cover, subtitle: e.target.value },
+                        })
+                      }
+                      className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Author"
+                      value={pdfOptions.cover?.author ?? ''}
+                      onChange={(e) =>
+                        setPdfOptions({
+                          ...pdfOptions,
+                          cover: { ...pdfOptions.cover, author: e.target.value },
+                        })
+                      }
+                      className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Date"
+                      value={pdfOptions.cover?.date ?? ''}
+                      onChange={(e) =>
+                        setPdfOptions({
+                          ...pdfOptions,
+                          cover: { ...pdfOptions.cover, date: e.target.value },
+                        })
+                      }
+                      className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                    />
+                  </div>
+                </fieldset>
+              </div>
+            )}
+
+            <div className="mt-3">
+              <label className="text-xs font-medium text-slate-700 block mb-1">Custom CSS</label>
+              <textarea
+                value={customCss}
+                onChange={(e) => setCustomCss(e.target.value)}
+                placeholder="body { font-family: 'My Font'; }"
+                spellCheck={false}
+                className="w-full h-24 font-mono text-xs border border-slate-300 rounded-md p-2 bg-white"
+              />
+            </div>
+          </div>
+        </details>
 
         <textarea
           value={content}

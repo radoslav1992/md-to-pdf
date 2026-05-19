@@ -33,6 +33,8 @@ pulldown-cmark = { version = "0.12", default-features = false, features = ["html
 quick-xml = { version = "0.36", features = ["serialize"] }
 ammonia = { version = "4.0", default-features = false }
 base64 = "0.22"
+csv = "1.3"
+orgize = "0.9"
 
 # Errors
 thiserror = "1.0"
