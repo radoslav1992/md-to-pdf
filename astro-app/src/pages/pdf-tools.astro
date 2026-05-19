@@ -1,0 +1,19 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PdfTools from '../components/PdfTools.tsx';
+---
+
+<BaseLayout title="PDF tools — Universal Document Converter">
+  <section class="max-w-6xl mx-auto px-4 py-10">
+    <div class="mb-6">
+      <span class="pill-peach">Premium</span>
+      <h1 class="mt-2 text-3xl font-bold tracking-tight text-stone-900">PDF tools</h1>
+      <p class="mt-2 text-stone-600 max-w-2xl">
+        Merge, split, compress, watermark, and password-protect existing PDFs.
+        Everything runs locally via the bundled <code>qpdf</code> and
+        <code>ghostscript</code> — no third-party service.
+      </p>
+    </div>
+    <PdfTools client:load />
+  </section>
+</BaseLayout>

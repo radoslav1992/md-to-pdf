@@ -54,6 +54,9 @@ export interface PdfOptions {
   header_template?: string;
   footer_template?: string;
   cover?: PdfCover;
+  /** When true, post-processes the PDF through ghostscript to emit
+   *  PDF/A-2b. Adds ~1s per render; useful for archival or compliance. */
+  pdf_a?: boolean;
 }
 
 export interface ConvertFile {
@@ -456,6 +459,35 @@ export const api = {
     request<ExtractResponse>('/api/extract', {
       method: 'POST',
       body: JSON.stringify(payload),
+    }),
+
+  pdfMerge: (files: string[]) =>
+    request<{ ok: true; pdf_base64: string; size_bytes: number }>('/api/pdf/merge', {
+      method: 'POST',
+      body: JSON.stringify({ files }),
+    }),
+  pdfSplit: (pdf_base64: string, pages: string) =>
+    request<{ ok: true; pdf_base64: string; size_bytes: number }>('/api/pdf/split', {
+      method: 'POST',
+      body: JSON.stringify({ pdf_base64, pages }),
+    }),
+  pdfCompress: (
+    pdf_base64: string,
+    level: 'screen' | 'ebook' | 'printer' | 'prepress',
+  ) =>
+    request<{ ok: true; pdf_base64: string; size_bytes: number }>('/api/pdf/compress', {
+      method: 'POST',
+      body: JSON.stringify({ pdf_base64, level }),
+    }),
+  pdfWatermark: (pdf_base64: string, text: string) =>
+    request<{ ok: true; pdf_base64: string; size_bytes: number }>('/api/pdf/watermark', {
+      method: 'POST',
+      body: JSON.stringify({ pdf_base64, text }),
+    }),
+  pdfEncrypt: (pdf_base64: string, user_password: string, owner_password?: string) =>
+    request<{ ok: true; pdf_base64: string; size_bytes: number }>('/api/pdf/encrypt', {
+      method: 'POST',
+      body: JSON.stringify({ pdf_base64, user_password, owner_password }),
     }),
 
   listImages: () =>

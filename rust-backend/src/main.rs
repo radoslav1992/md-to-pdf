@@ -30,6 +30,7 @@ mod images;
 mod jobs;
 mod pandoc;
 mod pdf;
+mod pdf_tools;
 mod render_cache;
 mod shares;
 mod templates;
@@ -74,12 +75,29 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(render_cache::DEFAULT_MAX_BYTES);
 
+    let chromium_pool_size: usize = std::env::var("CHROMIUM_POOL_SIZE")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .filter(|n: &usize| *n >= 1 && *n <= 32)
+        .unwrap_or(5);
+    let chromium_pool_root: std::path::PathBuf = std::env::var("CHROMIUM_POOL_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir().join("udc-chromium-pool"));
+    let chromium_pool = std::sync::Arc::new(
+        pdf::ChromiumSlotPool::new(chromium_pool_size, &chromium_pool_root)?,
+    );
+    tracing::info!(
+        size = chromium_pool_size,
+        root = %chromium_pool_root.display(),
+        "chromium warm pool ready"
+    );
+
     let state = AppState {
         pool,
         admin_emails,
         cookie_secure,
         chromium_bin,
-        pdf_semaphore: std::sync::Arc::new(tokio::sync::Semaphore::new(5)),
+        chromium_pool,
         render_cache: std::sync::Arc::new(std::sync::Mutex::new(
             render_cache::RenderCache::new(render_cache_max_bytes),
         )),
@@ -148,6 +166,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/shares/{id}", axum::routing::delete(shares_revoke))
         .route("/api/share/{token}", get(share_meta).post(share_view))
         .route("/api/extract", post(extract_handler))
+        .route("/api/pdf/merge", post(pdf_merge_handler))
+        .route("/api/pdf/split", post(pdf_split_handler))
+        .route("/api/pdf/compress", post(pdf_compress_handler))
+        .route("/api/pdf/watermark", post(pdf_watermark_handler))
+        .route("/api/pdf/encrypt", post(pdf_encrypt_handler))
         .route("/api/images", get(images_list).post(images_upload))
         .route(
             "/api/images/{id}",
@@ -762,6 +785,144 @@ async fn images_delete(
     let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
     images::delete(&state.pool, &ctx.user, id).await?;
     Ok(Json(json!({ "ok": true })))
+}
+
+// ---------- PDF toolkit (premium) ----------
+
+#[derive(Debug, Deserialize)]
+struct PdfMergeRequest {
+    /// Base64-encoded PDFs to concatenate. Order is preserved.
+    files: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PdfSplitRequest {
+    pdf_base64: String,
+    /// 1-indexed page range, e.g. `"1-3,7,9-z"` (`z` = last).
+    pages: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PdfCompressRequest {
+    pdf_base64: String,
+    /// `screen | ebook | printer | prepress`. Defaults to `ebook`.
+    #[serde(default)]
+    level: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PdfWatermarkRequest {
+    pdf_base64: String,
+    text: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PdfEncryptRequest {
+    pdf_base64: String,
+    user_password: String,
+    #[serde(default)]
+    owner_password: Option<String>,
+}
+
+fn decode_pdf_b64(s: &str) -> Result<Vec<u8>, ConvertError> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    STANDARD
+        .decode(s.trim())
+        .map_err(|e| ConvertError::BadRequest(format!("invalid base64: {e}")))
+}
+
+fn pdf_response(bytes: &[u8]) -> Json<serde_json::Value> {
+    let encoded = crate::pdf::encode_base64(bytes);
+    Json(json!({
+        "ok": true,
+        "pdf_base64": encoded,
+        "size_bytes": bytes.len(),
+    }))
+}
+
+async fn pdf_merge_handler(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Json(payload): Json<PdfMergeRequest>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    usage::reserve(&state.pool, &ctx.user, ctx.api_key_id, "pdf_tools", 1).await?;
+    let inputs: Vec<Vec<u8>> = payload
+        .files
+        .iter()
+        .map(|s| decode_pdf_b64(s))
+        .collect::<Result<Vec<_>, _>>()?;
+    let bytes = pdf_tools::merge(&inputs).await?;
+    Ok(pdf_response(&bytes))
+}
+
+async fn pdf_split_handler(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Json(payload): Json<PdfSplitRequest>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    usage::reserve(&state.pool, &ctx.user, ctx.api_key_id, "pdf_tools", 1).await?;
+    let input = decode_pdf_b64(&payload.pdf_base64)?;
+    let bytes = pdf_tools::split(&input, &payload.pages).await?;
+    Ok(pdf_response(&bytes))
+}
+
+async fn pdf_compress_handler(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Json(payload): Json<PdfCompressRequest>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    usage::reserve(&state.pool, &ctx.user, ctx.api_key_id, "pdf_tools", 1).await?;
+    let input = decode_pdf_b64(&payload.pdf_base64)?;
+    let level = pdf_tools::CompressLevel::from_str(payload.level.as_deref().unwrap_or(""))?;
+    let bytes = pdf_tools::compress(&input, level).await?;
+    Ok(pdf_response(&bytes))
+}
+
+async fn pdf_watermark_handler(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Json(payload): Json<PdfWatermarkRequest>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    usage::reserve(&state.pool, &ctx.user, ctx.api_key_id, "pdf_tools", 1).await?;
+    let input = decode_pdf_b64(&payload.pdf_base64)?;
+    // Watermarking renders an overlay PDF via Chromium; grab a slot
+    // exactly like a normal PDF conversion would.
+    let slot = state.chromium_pool.acquire().await?;
+    let bytes =
+        pdf_tools::watermark(&state.chromium_bin, Some(slot.data_dir()), &input, &payload.text)
+            .await?;
+    Ok(pdf_response(&bytes))
+}
+
+async fn pdf_encrypt_handler(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Json(payload): Json<PdfEncryptRequest>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    usage::reserve(&state.pool, &ctx.user, ctx.api_key_id, "pdf_tools", 1).await?;
+    let input = decode_pdf_b64(&payload.pdf_base64)?;
+    let bytes = pdf_tools::encrypt(
+        &input,
+        &payload.user_password,
+        payload.owner_password.as_deref(),
+    )
+    .await?;
+    Ok(pdf_response(&bytes))
 }
 
 // ---------- Admin ----------

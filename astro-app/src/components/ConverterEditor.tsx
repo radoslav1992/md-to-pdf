@@ -747,6 +747,14 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                   />
                   Page numbers (Chromium footer)
                 </label>
+                <label className="col-span-2 flex items-center gap-2 text-sm text-stone-700">
+                  <input
+                    type="checkbox"
+                    checked={pdfOptions.pdf_a ?? false}
+                    onChange={(e) => setPdfOptions({ ...pdfOptions, pdf_a: e.target.checked })}
+                  />
+                  PDF/A-2b (archival; ghostscript post-process)
+                </label>
                 <div className="col-span-2">
                   <label className="text-xs font-medium text-stone-700 block mb-1">
                     Header HTML (appears on every page)

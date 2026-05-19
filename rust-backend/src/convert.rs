@@ -59,6 +59,9 @@ pub struct PdfOptions {
     pub header_template: Option<String>,
     pub footer_template: Option<String>,
     pub cover: Option<PdfCover>,
+    /// When `true`, post-process the rendered PDF through ghostscript
+    /// to produce a PDF/A-2b archival-grade file. Adds ~1s per render.
+    pub pdf_a: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -343,9 +346,7 @@ pub async fn run(
             warnings: Vec::new(),
         },
         "pdf" => {
-            let _permit = state.pdf_semaphore.acquire().await.map_err(|e| {
-                ConvertError::Internal(format!("failed to acquire pdf permit: {e}"))
-            })?;
+            let slot = state.chromium_pool.acquire().await?;
             let want_numbers = pdf_options
                 .as_ref()
                 .and_then(|o| o.page_numbers)
@@ -358,8 +359,20 @@ pub async fn run(
             } else {
                 document.clone()
             };
-            let pdf_bytes =
-                pdf::render(&state.chromium_bin, &doc, want_numbers, has_mermaid).await?;
+            let mut pdf_bytes = pdf::render_with_dir(
+                &state.chromium_bin,
+                Some(slot.data_dir()),
+                &doc,
+                want_numbers,
+                has_mermaid,
+            )
+            .await?;
+            // Optional PDF/A flattening. Off by default — adds a
+            // ghostscript pass — but turning it on is one extra option.
+            let want_pdf_a = pdf_options.as_ref().and_then(|o| o.pdf_a).unwrap_or(false);
+            if want_pdf_a {
+                pdf_bytes = crate::pdf_tools::to_pdf_a(&pdf_bytes).await?;
+            }
             let encoded = pdf::encode_base64(&pdf_bytes);
             ConvertResponse {
                 ok: true,
@@ -374,9 +387,7 @@ pub async fn run(
             }
         }
         "png" | "jpg" | "jpeg" => {
-            let _permit = state.pdf_semaphore.acquire().await.map_err(|e| {
-                ConvertError::Internal(format!("failed to acquire screenshot permit: {e}"))
-            })?;
+            let slot = state.chromium_pool.acquire().await?;
             let doc = if let Some(u) = user {
                 inline_user_images(&document, &state.pool, u).await
             } else {
@@ -386,8 +397,14 @@ pub async fn run(
                 "png" => pdf::ImageFormat::Png,
                 _ => pdf::ImageFormat::Jpeg,
             };
-            let bytes =
-                pdf::screenshot(&state.chromium_bin, &doc, format, has_mermaid).await?;
+            let bytes = pdf::screenshot_with_dir(
+                &state.chromium_bin,
+                Some(slot.data_dir()),
+                &doc,
+                format,
+                has_mermaid,
+            )
+            .await?;
             ConvertResponse {
                 ok: true,
                 output_type: output.clone(),
