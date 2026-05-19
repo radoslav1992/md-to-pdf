@@ -30,6 +30,23 @@ function isActive(currentPath: string | undefined, href: string): boolean {
 export default function NavBar({ currentPath }: Props) {
   const state = useUser();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof document === 'undefined') return 'light';
+    return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+  });
+
+  const toggleTheme = useCallback(() => {
+    setTheme((cur) => {
+      const next = cur === 'light' ? 'dark' : 'light';
+      try {
+        localStorage.setItem('udc-theme', next);
+      } catch {
+        /* private mode etc — ignore */
+      }
+      document.documentElement.classList.toggle('dark', next === 'dark');
+      return next;
+    });
+  }, []);
 
   const logout = useCallback(async () => {
     try {
@@ -46,6 +63,7 @@ export default function NavBar({ currentPath }: Props) {
 
   return (
     <div className="flex items-center gap-2">
+      <ThemeToggle theme={theme} onToggle={toggleTheme} />
       {state.status === 'loading' ? (
         <span className="text-stone-400 text-sm px-2">…</span>
       ) : state.status === 'anon' ? (
@@ -392,6 +410,52 @@ function RoleBadge({ role }: { role: 'free' | 'premium' | 'admin' }) {
         ? 'pill-peach mt-2'
         : 'pill-stone mt-2';
   return <span className={cls}>{role}</span>;
+}
+
+function ThemeToggle({
+  theme,
+  onToggle,
+}: {
+  theme: 'light' | 'dark';
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+      aria-label="Toggle color theme"
+      className="inline-flex items-center justify-center w-9 h-9 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 transition text-stone-600 dark:text-stone-300"
+    >
+      {theme === 'dark' ? (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+          {/* Sun */}
+          <circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.6" />
+          {[0, 45, 90, 135, 180, 225, 270, 315].map((d) => (
+            <line
+              key={d}
+              x1="8"
+              y1="1.5"
+              x2="8"
+              y2="3"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              transform={`rotate(${d} 8 8)`}
+            />
+          ))}
+        </svg>
+      ) : (
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+          {/* Moon */}
+          <path
+            d="M6.5 1.5a6.5 6.5 0 1 0 8 8 5 5 0 0 1-8-8Z"
+            fill="currentColor"
+          />
+        </svg>
+      )}
+    </button>
+  );
 }
 
 function Chevron({ open }: { open: boolean }) {

@@ -34,6 +34,8 @@ interface Props {
     theme?: string | null;
     custom_css?: string | null;
     pdf_options?: PdfOptions | null;
+    folder?: string | null;
+    tags?: string[] | null;
   };
 }
 
@@ -150,6 +152,8 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
   const [templateId, setTemplateId] = useState<number | null>(null);
   const [encryptEnabled, setEncryptEnabled] = useState<boolean>(false);
   const [encryptPassword, setEncryptPassword] = useState<string>('');
+  const [folder, setFolder] = useState<string>(initialData?.folder ?? '');
+  const [tagsInput, setTagsInput] = useState<string>((initialData?.tags ?? []).join(', '));
   const [result, setResult] = useState<ConvertResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -369,6 +373,10 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
     setInfo(null);
     try {
       const wantEncrypt = isPremium && encryptEnabled && encryptPassword.trim().length >= 8;
+      const parsedTags = tagsInput
+        .split(',')
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0);
       const payload = {
         title: title.trim() || 'Untitled',
         type: inputType,
@@ -379,6 +387,8 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
         custom_css: isPremium && customCss.trim() ? customCss : null,
         pdf_options: isPremium && outputType === 'pdf' ? pdfOptions : null,
         encrypt_password: wantEncrypt ? encryptPassword : null,
+        folder: folder.trim() || null,
+        tags: parsedTags.length > 0 ? parsedTags : null,
       };
       if (savedId) {
         const res = await api.updateDocument(savedId, payload);
@@ -408,6 +418,8 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
     pdfOptions,
     encryptEnabled,
     encryptPassword,
+    folder,
+    tagsInput,
   ]);
 
   const previewSrcDoc = useMemo(() => {
@@ -435,6 +447,25 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
             className="flex-1 min-w-[180px] border border-stone-300 rounded-md px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
         </div>
+
+        {isAuthed && (
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={folder}
+              onChange={(e) => setFolder(e.target.value)}
+              placeholder="Folder (e.g. Work/Drafts) — optional"
+              className="flex-1 min-w-[160px] border border-stone-300 rounded-md px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+            <input
+              type="text"
+              value={tagsInput}
+              onChange={(e) => setTagsInput(e.target.value)}
+              placeholder="Tags, comma-separated"
+              className="flex-1 min-w-[160px] border border-stone-300 rounded-md px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-sm font-medium text-stone-700">Input</label>

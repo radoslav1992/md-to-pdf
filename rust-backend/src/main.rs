@@ -291,10 +291,15 @@ async fn batch_handler(
 async fn documents_list(
     State(state): State<AppState>,
     jar: CookieJar,
+    Query(filter): Query<documents::ListFilter>,
 ) -> Result<Json<serde_json::Value>, ConvertError> {
     let user = auth::require_user(&state, &jar).await?;
-    let items = documents::list(&state.pool, &user).await?;
-    Ok(Json(json!({ "ok": true, "items": items })))
+    let items = documents::list(&state.pool, &user, &filter).await?;
+    let folders = documents::list_folders(&state.pool, &user).await?;
+    let tags = documents::list_tags(&state.pool, &user).await?;
+    Ok(Json(
+        json!({ "ok": true, "items": items, "folders": folders, "tags": tags }),
+    ))
 }
 
 async fn documents_create(
@@ -660,7 +665,7 @@ async fn share_view(
     // Look up the document directly (we already have user_id on the link).
     let doc: Option<crate::db::Document> = sqlx::query_as(
         "SELECT id, user_id, title, input_type, output_type, content, rendered_html, \
-                theme, custom_css, pdf_options, is_encrypted, encryption_salt, created_at, updated_at \
+                theme, custom_css, pdf_options, is_encrypted, encryption_salt, folder, tags, created_at, updated_at \
          FROM documents WHERE id = ?1 AND user_id = ?2",
     )
     .bind(link.document_id)

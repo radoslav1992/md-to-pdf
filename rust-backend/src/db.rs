@@ -82,6 +82,8 @@ pub struct Document {
     pub pdf_options: Option<String>,
     pub is_encrypted: i64,
     pub encryption_salt: Option<String>,
+    pub folder: Option<String>,
+    pub tags: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -93,6 +95,8 @@ pub struct DocumentSummary {
     pub input_type: String,
     pub output_type: String,
     pub is_encrypted: bool,
+    pub folder: Option<String>,
+    pub tags: Vec<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -105,10 +109,21 @@ impl From<&Document> for DocumentSummary {
             input_type: d.input_type.clone(),
             output_type: d.output_type.clone(),
             is_encrypted: d.is_encrypted != 0,
+            folder: d.folder.clone(),
+            tags: parse_tags(d.tags.as_deref()),
             created_at: d.created_at,
             updated_at: d.updated_at,
         }
     }
+}
+
+/// Decode the tags column (JSON array of strings) into a Vec. Returns
+/// an empty vector on null or any parse failure — tags are decorative,
+/// never load-bearing.
+pub fn parse_tags(stored: Option<&str>) -> Vec<String> {
+    stored
+        .and_then(|s| serde_json::from_str::<Vec<String>>(s).ok())
+        .unwrap_or_default()
 }
 
 pub fn now_seconds() -> i64 {

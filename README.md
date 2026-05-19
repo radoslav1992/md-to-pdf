@@ -235,8 +235,16 @@ page, so file://-based renders still see the bytes.
 - `DELETE /api/images/:id`        — remove
 
 ### Documents (auth required)
-- `GET    /api/documents`        — list your saved documents
-- `POST   /api/documents`        — save `{ title, type, output, content, rendered_html?, theme?, custom_css?, pdf_options? }`
+- `GET    /api/documents?q=&folder=&tag=` — list your saved documents
+  - `q`: full-text search (FTS5 prefix-matched on title + content;
+    encrypted documents are matched on title only). Returns `items`,
+    plus `folders` and `tags` arrays for sidebar UIs.
+  - `folder`: exact folder match. Pass `?folder=` for top-level only.
+  - `tag`: single tag, case-insensitive.
+- `POST   /api/documents`        — save `{ title, type, output, content, rendered_html?, theme?, custom_css?, pdf_options?, folder?, tags? }`
+  - `folder`: free-form path (e.g. `"Work/Drafts"`, normalised to `/`)
+  - `tags`: array of short slugs; lowercased and deduplicated
+    (≤16 tags, ≤32 chars each)
 - `GET    /api/documents/:id`    — fetch one (only your own)
 - `PATCH  /api/documents/:id`    — update one (same body as POST)
 - `DELETE /api/documents/:id`    — delete one

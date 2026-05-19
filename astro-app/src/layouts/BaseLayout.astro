@@ -32,10 +32,32 @@ const marketingLinks = [
     <meta name="description" content={description} />
     <meta name="theme-color" content="#fffbf3" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <title>{title}</title>
+    {/* Apply the persisted theme before first paint so we don't flash the
+        opposite scheme. Falls back to the OS preference when nothing is set. */}
+    <script is:inline>
+      (function () {
+        try {
+          var stored = localStorage.getItem('udc-theme');
+          var preferDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var theme = stored || (preferDark ? 'dark' : 'light');
+          if (theme === 'dark') document.documentElement.classList.add('dark');
+        } catch (e) {}
+      })();
+    </script>
+    {/* Register the service worker so the static shell keeps loading when
+        the network's out. Failures are silent — the SW is purely additive. */}
+    <script is:inline>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/sw.js').catch(function () {});
+        });
+      }
+    </script>
   </head>
-  <body class="min-h-screen bg-cream-50 text-stone-900 flex flex-col antialiased">
-    <header class="sticky top-0 z-40 bg-cream-50/85 backdrop-blur-md border-b border-stone-200/70">
+  <body class="min-h-screen bg-cream-50 text-stone-900 flex flex-col antialiased dark:bg-stone-950 dark:text-stone-100">
+    <header class="sticky top-0 z-40 bg-cream-50/85 backdrop-blur-md border-b border-stone-200/70 dark:bg-stone-900/85 dark:border-stone-800/70">
       <nav class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
         <a href="/" class="flex items-center gap-2 font-semibold text-base text-stone-900 hover:text-brand-700 transition">
           <span class="inline-flex w-8 h-8 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-glow text-sm font-bold">U</span>
@@ -70,7 +92,7 @@ const marketingLinks = [
       <slot />
     </main>
 
-    <footer class="border-t border-stone-200/70 mt-16 bg-cream-50/60">
+    <footer class="border-t border-stone-200/70 mt-16 bg-cream-50/60 dark:bg-stone-900/50 dark:border-stone-800/70">
       <div class="max-w-6xl mx-auto px-4 py-10 grid md:grid-cols-3 gap-8 text-sm">
         <div>
           <div class="flex items-center gap-2 font-semibold text-stone-900">

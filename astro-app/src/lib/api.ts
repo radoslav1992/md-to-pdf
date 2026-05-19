@@ -13,6 +13,8 @@ export interface DocumentSummary {
   input_type: string;
   output_type: string;
   is_encrypted: boolean;
+  folder: string | null;
+  tags: string[];
   created_at: number;
   updated_at: number;
 }
@@ -163,6 +165,21 @@ export interface SaveDocumentPayload {
   custom_css?: string | null;
   pdf_options?: PdfOptions | null;
   encrypt_password?: string | null;
+  folder?: string | null;
+  tags?: string[] | null;
+}
+
+export interface DocumentListFilter {
+  q?: string;
+  folder?: string;
+  tag?: string;
+}
+
+export interface DocumentListResponse {
+  ok: true;
+  items: DocumentSummary[];
+  folders: string[];
+  tags: string[];
 }
 
 export interface DocumentVersionSummary {
@@ -288,8 +305,16 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  listDocuments: () =>
-    request<{ ok: true; items: DocumentSummary[] }>('/api/documents'),
+  listDocuments: (filter?: DocumentListFilter) => {
+    const qs = new URLSearchParams();
+    if (filter?.q) qs.set('q', filter.q);
+    if (filter?.folder !== undefined) qs.set('folder', filter.folder);
+    if (filter?.tag) qs.set('tag', filter.tag);
+    const suffix = qs.toString();
+    return request<DocumentListResponse>(
+      suffix ? `/api/documents?${suffix}` : '/api/documents',
+    );
+  },
   getDocument: (id: number) =>
     request<{ ok: true; document: SavedDocument }>(`/api/documents/${id}`),
   saveDocument: (payload: SaveDocumentPayload) =>
