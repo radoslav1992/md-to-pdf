@@ -137,6 +137,27 @@ export default function TemplateList() {
     }
   };
 
+  const onTogglePublic = async (t: Template) => {
+    // Re-send the existing template fields plus the flipped flag so the
+    // PATCH doesn't accidentally null out theme / CSS / page-setup.
+    const pdf: PdfOptions | null = t.pdf_options ? (() => {
+      try { return JSON.parse(t.pdf_options ?? ''); } catch { return null; }
+    })() : null;
+    try {
+      await api.updateTemplate(t.id, {
+        name: t.name,
+        theme: t.theme,
+        custom_css: t.custom_css,
+        pdf_options: pdf ?? undefined,
+        is_public: !t.is_public,
+      });
+      setInfo(t.is_public ? 'Template unpublished.' : 'Template published to the gallery.');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   return (
     <div className="grid lg:grid-cols-2 gap-6">
       <div>
@@ -175,13 +196,37 @@ export default function TemplateList() {
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium text-stone-900">{t.name}</div>
+                    <div className="font-medium text-stone-900 flex items-center gap-2">
+                      {t.name}
+                      {t.is_public && (
+                        <span
+                          title="Visible in the public gallery"
+                          className="text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded bg-success-100 text-success-800"
+                        >
+                          Public
+                        </span>
+                      )}
+                      {t.clone_source_id != null && (
+                        <span
+                          title={`Cloned from gallery template #${t.clone_source_id}`}
+                          className="text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded bg-stone-200 text-stone-700"
+                        >
+                          Clone
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs text-stone-500 mt-0.5">
                       {t.theme ?? 'default'} ·{' '}
                       {new Date(t.updated_at * 1000).toLocaleString()}
                     </div>
                   </div>
                   <div className="flex items-center gap-3 text-xs">
+                    <button
+                      onClick={() => onTogglePublic(t)}
+                      className="text-brand-600 hover:text-brand-700"
+                    >
+                      {t.is_public ? 'Unpublish' : 'Publish'}
+                    </button>
                     <button onClick={() => onEdit(t)} className="text-brand-600 hover:text-brand-700">
                       Edit
                     </button>

@@ -296,8 +296,26 @@ up to 32 due watches per tick.
 - `GET    /api/templates`        — list your templates
 - `POST   /api/templates`        — create `{ name, theme?, custom_css?, pdf_options? }`
 - `GET    /api/templates/:id`    — fetch one
-- `PATCH  /api/templates/:id`    — update
+- `PATCH  /api/templates/:id`    — update (accepts `is_public: true|false` to
+  toggle the gallery flag)
 - `DELETE /api/templates/:id`    — delete
+
+### Template gallery (public)
+A template marked `is_public` appears in `/gallery` for everyone. Browsing
+is anonymous; cloning into your own library is premium-only (templates
+are a premium feature).
+- `GET  /api/v1/templates/gallery`             — list public templates (anon OK)
+- `GET  /api/v1/templates/gallery/:id`         — fetch one
+- `POST /api/v1/templates/gallery/:id/clone`   — copy into your library (premium)
+
+### Embeddable share viewer
+Every share link (`/s?t=<token>`) also has a chrome-less twin at
+`/embed?t=<token>` designed to be dropped into a third-party site
+inside an `<iframe>`. The Caddyfile strips `X-Frame-Options` and sets
+`Content-Security-Policy: frame-ancestors *` for `/embed*` paths only,
+so cross-origin embedding actually works while the rest of the site
+stays click-jack-safe. The share modal in the editor has a "Copy embed
+code" button that generates the full `<iframe>` snippet for you.
 
 ### API keys (premium)
 - `GET    /api/keys`             — list (hashes only; the plaintext is never returned again)

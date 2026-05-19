@@ -111,6 +111,20 @@ export interface Template {
   theme: string | null;
   custom_css: string | null;
   pdf_options: string | null;
+  is_public: boolean;
+  clone_source_id: number | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface GalleryTemplate {
+  id: number;
+  name: string;
+  theme: string | null;
+  custom_css: string | null;
+  pdf_options: string | null;
+  is_public: true;
+  owner_id: number;
   created_at: number;
   updated_at: number;
 }
@@ -120,6 +134,8 @@ export interface SaveTemplatePayload {
   theme?: string | null;
   custom_css?: string | null;
   pdf_options?: PdfOptions | null;
+  /** Tri-state: `undefined` keeps the current value; `true`/`false` toggles. */
+  is_public?: boolean;
 }
 
 export interface ApiKey {
@@ -378,6 +394,14 @@ export const api = {
     }),
   deleteTemplate: (id: number) =>
     request<{ ok: true }>(`/api/templates/${id}`, { method: 'DELETE' }),
+
+  listGalleryTemplates: () =>
+    request<{ ok: true; items: GalleryTemplate[] }>('/api/v1/templates/gallery'),
+  cloneGalleryTemplate: (id: number) =>
+    request<{ ok: true; template: Template }>(
+      `/api/v1/templates/gallery/${id}/clone`,
+      { method: 'POST' },
+    ),
 
   listKeys: () => request<{ ok: true; items: ApiKey[] }>('/api/keys'),
   createKey: (name: string) =>

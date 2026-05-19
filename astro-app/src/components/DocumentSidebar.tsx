@@ -12,6 +12,17 @@ interface Props {
   onRestored: () => void;
 }
 
+/**
+ * Build the absolute URL an embedder needs in their `<iframe src="…">`.
+ * We use the current origin so the snippet works whether the user is
+ * on localhost, a Hetzner IP, or a custom domain — the operator never
+ * has to configure anything.
+ */
+function absoluteEmbedUrl(token: string): string {
+  if (typeof window === 'undefined') return `/embed?t=${token}`;
+  return `${window.location.origin}/embed?t=${token}`;
+}
+
 export default function DocumentSidebar({ documentId, isPremium, onRestored }: Props) {
   const [versions, setVersions] = useState<DocumentVersionSummary[] | null>(null);
   const [shares, setShares] = useState<ShareLink[] | null>(null);
@@ -189,9 +200,30 @@ export default function DocumentSidebar({ documentId, isPremium, onRestored }: P
           </button>
 
           {newShare && (
-            <div className="mt-3 bg-warn-50 border border-warn-100 rounded p-2">
-              <p className="text-xs text-warn-800 font-medium">Link created — copy it now</p>
-              <code className="block mt-1 text-xs font-mono break-all">{newShare.url}</code>
+            <div className="mt-3 bg-warn-50 border border-warn-100 rounded p-2 space-y-2">
+              <div>
+                <p className="text-xs text-warn-800 font-medium">Link created — copy it now</p>
+                <code className="block mt-1 text-xs font-mono break-all">{newShare.url}</code>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wide font-semibold text-warn-800/80">
+                  Embed
+                </p>
+                <code className="block mt-1 text-xs font-mono break-all">
+                  {`<iframe src="${absoluteEmbedUrl(newShare.token)}" width="100%" height="600" frameborder="0" sandbox="allow-same-origin allow-scripts"></iframe>`}
+                </code>
+                <button
+                  type="button"
+                  className="mt-1 text-[11px] text-warn-800 hover:underline"
+                  onClick={() =>
+                    navigator.clipboard.writeText(
+                      `<iframe src="${absoluteEmbedUrl(newShare.token)}" width="100%" height="600" frameborder="0" sandbox="allow-same-origin allow-scripts"></iframe>`,
+                    )
+                  }
+                >
+                  Copy embed code
+                </button>
+              </div>
             </div>
           )}
 

@@ -1,0 +1,20 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import TemplateGallery from '../components/TemplateGallery.tsx';
+---
+
+<BaseLayout title="Template gallery — Universal Document Converter">
+  <section class="max-w-6xl mx-auto px-4 py-10">
+    <div class="mb-6">
+      <span class="pill-peach">Community</span>
+      <h1 class="mt-2 text-3xl font-bold tracking-tight text-stone-900">Template gallery</h1>
+      <p class="mt-2 text-stone-600 max-w-2xl">
+        Reusable styling bundles shared by other users. Anyone can browse;
+        cloning a template into your own library requires a premium account.
+        Your own templates can be published from{' '}
+        <a class="text-brand-700 hover:underline" href="/templates">/templates</a>.
+      </p>
+    </div>
+    <TemplateGallery client:load />
+  </section>
+</BaseLayout>

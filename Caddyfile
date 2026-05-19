@@ -13,6 +13,15 @@
         }
     }
 
+    # Embed viewer needs to be loadable from a third-party site. Strip
+    # the default frame-blocking headers and replace with a permissive
+    # `frame-ancestors` so `/embed?t=...` can be dropped into an
+    # <iframe> on any origin.
+    @embed path /embed /embed* /embed/* /embed.html
+    header @embed -X-Frame-Options
+    header @embed Content-Security-Policy "frame-ancestors *"
+    header @embed Referrer-Policy "no-referrer"
+
     # Static Astro build for everything else.
     handle {
         root * /srv/web

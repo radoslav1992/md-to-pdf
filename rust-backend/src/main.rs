@@ -196,6 +196,12 @@ fn build_api_router(state: AppState) -> Router {
                 .delete(documents_delete),
         )
         .route("/templates", get(templates_list).post(templates_create))
+        .route("/templates/gallery", get(templates_gallery_list))
+        .route("/templates/gallery/{id}", get(templates_gallery_get))
+        .route(
+            "/templates/gallery/{id}/clone",
+            post(templates_gallery_clone),
+        )
         .route(
             "/templates/{id}",
             get(templates_get)
@@ -863,6 +869,36 @@ async fn templates_delete(
     require_premium(&ctx.user)?;
     templates::delete(&state.pool, &ctx.user, id).await?;
     Ok(Json(json!({ "ok": true })))
+}
+
+/// Public listing of community templates. Anonymous OK — this is a
+/// browsing experience; cloning + applying require an account
+/// (cloning is also premium-gated).
+async fn templates_gallery_list(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let items = templates::gallery_list(&state.pool).await?;
+    Ok(Json(json!({ "ok": true, "items": items })))
+}
+
+async fn templates_gallery_get(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let t = templates::gallery_get(&state.pool, id).await?;
+    Ok(Json(json!({ "ok": true, "template": t })))
+}
+
+async fn templates_gallery_clone(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    let t = templates::gallery_clone(&state.pool, &ctx.user, id).await?;
+    Ok(Json(json!({ "ok": true, "template": t })))
 }
 
 // ---------- API keys ----------
