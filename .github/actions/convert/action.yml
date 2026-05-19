@@ -1,0 +1,86 @@
+name: 'Universal Document Converter'
+description: 'Convert a file to HTML or PDF via a self-hosted Universal Document Converter API.'
+author: 'Universal Converter'
+branding:
+  icon: 'file-text'
+  color: 'green'
+
+inputs:
+  base-url:
+    description: 'Base URL of your Universal Document Converter API (e.g. https://docs.example.com).'
+    required: true
+  api-key:
+    description: 'Premium API key. Pass via a secret — never commit it.'
+    required: true
+  input:
+    description: 'Path to the file to convert.'
+    required: true
+  output:
+    description: 'Where to write the result. Defaults to <input>.pdf or <input>.html.'
+    required: false
+  format:
+    description: 'Output format: html or pdf.'
+    required: false
+    default: 'pdf'
+  type:
+    description: 'Input type override (markdown, html, json, xml, csv, org, asciidoc, rst, latex). Inferred from the extension when omitted.'
+    required: false
+  title:
+    description: 'Document title (shows in PDF metadata + cover).'
+    required: false
+  theme:
+    description: 'Theme name (default | clean | academic | resume | letter | github).'
+    required: false
+
+outputs:
+  output-path:
+    description: 'Path of the file that was written.'
+    value: ${{ steps.convert.outputs.output-path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install udc CLI
+      shell: bash
+      # The CLI lives in the same repo. Install with cargo from the
+      # action's checkout (the calling workflow needs to have actions/
+      # checkout@v4 earlier, OR set CARGO_HOME / use a pre-built bin).
+      run: |
+        if ! command -v udc >/dev/null 2>&1; then
+          echo "::group::Installing udc CLI"
+          cargo install --git https://github.com/radoslav1992/md-to-pdf \
+            --branch main --bin udc --path cli || \
+          cargo install --git https://github.com/radoslav1992/md-to-pdf \
+            --branch main --bin udc
+          echo "::endgroup::"
+        fi
+        udc --version
+
+    - name: Convert
+      id: convert
+      shell: bash
+      env:
+        UDC_BASE_URL: ${{ inputs.base-url }}
+        UDC_API_KEY:  ${{ inputs.api-key }}
+        UDC_INPUT:    ${{ inputs.input }}
+        UDC_OUTPUT:   ${{ inputs.output }}
+        UDC_FORMAT:   ${{ inputs.format }}
+        UDC_TYPE:     ${{ inputs.type }}
+        UDC_TITLE:    ${{ inputs.title }}
+        UDC_THEME:    ${{ inputs.theme }}
+      run: |
+        set -euo pipefail
+        out="${UDC_OUTPUT:-}"
+        if [ -z "$out" ]; then
+          # Strip the input extension and append the format extension.
+          stem="${UDC_INPUT%.*}"
+          out="${stem}.${UDC_FORMAT}"
+        fi
+        args=(convert "$UDC_INPUT" -o "$out" --format "$UDC_FORMAT")
+        [ -n "$UDC_TYPE" ]  && args+=(--type  "$UDC_TYPE")
+        [ -n "$UDC_TITLE" ] && args+=(--title "$UDC_TITLE")
+        [ -n "$UDC_THEME" ] && args+=(--theme "$UDC_THEME")
+        echo "udc ${args[*]}"
+        udc "${args[@]}"
+        echo "output-path=$out" >> "$GITHUB_OUTPUT"
+        ls -la "$out"

@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = ["rust-backend", "cli"]
+
+# `udc-cli` shares a handful of basics with the API; the rest of its
+# deps are picked up on its own. Resolver 2 keeps feature unification
+# from cascading server-only features (e.g. sqlx, axum) into the CLI.

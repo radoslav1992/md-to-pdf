@@ -37,6 +37,7 @@ mod render_cache;
 mod shares;
 mod templates;
 mod themes;
+mod url_watches;
 mod usage;
 
 use crate::db::AppState;
@@ -121,6 +122,14 @@ async fn main() -> anyhow::Result<()> {
             jobs::run_worker(worker_state).await;
         });
     }
+    // URL-watch poller. Same shape as the jobs worker — one tokio task,
+    // shared AppState, polls SQLite for due watches.
+    {
+        let worker_state = std::sync::Arc::new(state.clone());
+        tokio::spawn(async move {
+            url_watches::run_worker(worker_state).await;
+        });
+    }
 
     // The API surface is defined once (with no `/api` prefix) and mounted
     // at both `/api` (legacy) and `/api/v1` (versioned). Future breaking
@@ -200,6 +209,16 @@ fn build_api_router(state: AppState) -> Router {
         .route("/pdf/compress", post(pdf_compress_handler))
         .route("/pdf/watermark", post(pdf_watermark_handler))
         .route("/pdf/encrypt", post(pdf_encrypt_handler))
+        .route(
+            "/url-watches",
+            get(url_watches_list).post(url_watches_create),
+        )
+        .route(
+            "/url-watches/{id}",
+            get(url_watches_get)
+                .patch(url_watches_update)
+                .delete(url_watches_delete),
+        )
         .route("/images", get(images_list).post(images_upload))
         .route(
             "/images/{id}",
@@ -895,6 +914,66 @@ async fn extract_handler(
     usage::reserve(&state.pool, &ctx.user, ctx.api_key_id, "extract", 1).await?;
     let res = extract::run(&payload).await?;
     Ok(Json(res))
+}
+
+// ---------- URL watches (premium) ----------
+
+async fn url_watches_list(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    let items = url_watches::list(&state.pool, &ctx.user).await?;
+    Ok(Json(json!({ "ok": true, "items": items })))
+}
+
+async fn url_watches_get(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    let watch = url_watches::get(&state.pool, &ctx.user, id).await?;
+    Ok(Json(json!({ "ok": true, "watch": watch })))
+}
+
+async fn url_watches_create(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Json(payload): Json<url_watches::SaveWatch>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    let watch = url_watches::create(&state.pool, &ctx.user, &payload).await?;
+    Ok(Json(json!({ "ok": true, "watch": watch })))
+}
+
+async fn url_watches_update(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+    Json(payload): Json<url_watches::SaveWatch>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    let watch = url_watches::update(&state.pool, &ctx.user, id, &payload).await?;
+    Ok(Json(json!({ "ok": true, "watch": watch })))
+}
+
+async fn url_watches_delete(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, ConvertError> {
+    let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
+    require_premium(&ctx.user)?;
+    url_watches::delete(&state.pool, &ctx.user, id).await?;
+    Ok(Json(json!({ "ok": true })))
 }
 
 // ---------- Images ----------

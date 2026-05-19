@@ -48,6 +48,7 @@ tags:
   - name: Shares
   - name: Extract
   - name: Images
+  - name: URL watches
   - name: Admin
 
 paths:
@@ -688,6 +689,70 @@ paths:
                   markdown: { type: string }
                   page_count: { type: integer, nullable: true }
 
+  /url-watches:
+    get:
+      tags: [URL watches]
+      summary: List your URL watches (premium)
+      responses:
+        '200':
+          description: Watches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  items: { type: array, items: { $ref: '#/components/schemas/UrlWatch' } }
+    post:
+      tags: [URL watches]
+      summary: Create a new URL watch (premium)
+      description: |
+        Every `poll_interval_secs` the worker fetches `url`. When the
+        content hash differs from the previous poll it runs a
+        conversion (`input_type` → `output_format`) and POSTs the result
+        to `target_url`. If `target_secret` is set the body is HMAC-
+        SHA256 signed and the digest goes in `X-UDC-Signature`.
+        Minimum poll interval is 60 seconds; maximum is 7 days.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaveUrlWatch' }
+      responses:
+        '200':
+          description: Watch created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  watch: { $ref: '#/components/schemas/UrlWatch' }
+
+  /url-watches/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [URL watches]
+      summary: Fetch one watch
+      responses:
+        '200': { description: Watch }
+    patch:
+      tags: [URL watches]
+      summary: Update a watch (replaces every field)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaveUrlWatch' }
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [URL watches]
+      summary: Delete a watch
+      responses:
+        '200': { description: Deleted }
+
   /images:
     get:
       tags: [Images]
@@ -1058,6 +1123,48 @@ components:
         content_type: { type: string }
         size_bytes: { type: integer }
         created_at: { type: integer }
+
+    SaveUrlWatch:
+      type: object
+      required: [name, url, input_type, output_format, target_url]
+      properties:
+        name:           { type: string, maxLength: 80 }
+        url:            { type: string, format: uri, description: HTTP(S) source to poll }
+        input_type:
+          type: string
+          enum: [markdown, html, json, xml, csv, org, asciidoc, rst, latex]
+        output_format:
+          type: string
+          enum: [html, pdf]
+          description: Only HTML and PDF deliveries are supported for watches; binary outputs would balloon the webhook payload.
+        target_url:     { type: string, format: uri, description: Where to POST the conversion result }
+        target_secret:  { type: string, nullable: true, description: HMAC-SHA256 secret for X-UDC-Signature }
+        poll_interval_secs:
+          type: integer
+          minimum: 60
+          maximum: 604800
+          default: 900
+        enabled: { type: boolean, default: true }
+
+    UrlWatch:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64 }
+        name: { type: string }
+        url: { type: string, format: uri }
+        input_type: { type: string }
+        output_format: { type: string, enum: [html, pdf] }
+        target_url: { type: string, format: uri }
+        has_secret: { type: boolean }
+        poll_interval_secs: { type: integer }
+        enabled: { type: boolean }
+        last_seen_at: { type: integer, nullable: true }
+        last_polled_at: { type: integer, nullable: true }
+        last_delivered_at: { type: integer, nullable: true }
+        last_error: { type: string, nullable: true }
+        created_at: { type: integer }
+        updated_at: { type: integer }
 
     Error:
       type: object
