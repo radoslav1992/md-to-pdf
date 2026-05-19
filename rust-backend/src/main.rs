@@ -29,6 +29,7 @@ mod error;
 mod extract;
 mod images;
 mod jobs;
+mod metrics;
 mod pandoc;
 mod pdf;
 mod pdf_tools;
@@ -42,16 +43,33 @@ mod usage;
 
 use crate::db::AppState;
 use crate::error::ConvertError;
+use crate::metrics::{Metrics, RuntimeGauges};
 use crate::rate_limit::{Decision, Identity, RateLimiter, Tier};
 
 const BODY_LIMIT_BYTES: usize = 32 * 1024 * 1024; // 32 MiB — covers 16 MiB premium input plus JSON envelope
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
-        .compact()
-        .init();
+    // `RUST_LOG_FORMAT=json` switches to one-line JSON records so the
+    // logs can ship straight to Loki / Grafana / CloudWatch / Datadog
+    // without a parser in between. The default stays the compact
+    // human-readable format so `docker compose logs -f` keeps working.
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
+    let json_logs = std::env::var("RUST_LOG_FORMAT").as_deref() == Ok("json");
+    if json_logs {
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .json()
+            .with_current_span(true)
+            .with_span_list(false)
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .compact()
+            .init();
+    }
 
     let database_url =
         std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:/data/converter.db".into());
@@ -111,6 +129,7 @@ async fn main() -> anyhow::Result<()> {
             render_cache::RenderCache::new(render_cache_max_bytes),
         )),
         rate_limiter: std::sync::Arc::new(RateLimiter::new(rate_limit_buckets)),
+        metrics: std::sync::Arc::new(Metrics::default()),
     };
 
     // Spawn the background job worker. One worker is enough on the
@@ -157,6 +176,9 @@ async fn main() -> anyhow::Result<()> {
 fn build_api_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
+        .route("/healthz", get(healthz))
+        .route("/readyz", get(readyz))
+        .route("/metrics", get(metrics_handler))
         .route("/openapi.yaml", get(openapi_yaml))
         .route("/openapi.json", get(openapi_json))
         .route("/auth/signup", post(signup))
@@ -228,10 +250,20 @@ fn build_api_router(state: AppState) -> Router {
         .route("/admin/users/{id}/role", post(admin_update_role))
         .route("/admin/cache", get(admin_cache_stats))
         .route("/admin/ratelimit", get(admin_ratelimit_stats))
+        // Layers run outside-in for requests, inside-out for responses,
+        // so the order here is: rate-limit-check first (cheap, may
+        // short-circuit), then the observability wrappers around the
+        // actual work. The observe layer must wrap rate_limit so the
+        // 429 responses still get counted.
         .layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit_middleware,
         ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            observe_middleware,
+        ))
+        .layer(middleware::from_fn(request_id_middleware))
         .with_state(state)
 }
 
@@ -276,7 +308,14 @@ async fn openapi_json() -> Response {
 /// Paths that bypass the rate limiter — pure status probes that must
 /// always answer so monitors don't flag the service as down under burst
 /// load.
-const RATE_LIMIT_EXEMPT_PATHS: &[&str] = &["/health", "/openapi.yaml", "/openapi.json"];
+const RATE_LIMIT_EXEMPT_PATHS: &[&str] = &[
+    "/health",
+    "/healthz",
+    "/readyz",
+    "/metrics",
+    "/openapi.yaml",
+    "/openapi.json",
+];
 
 async fn rate_limit_middleware(
     State(state): State<AppState>,
@@ -380,6 +419,179 @@ async fn admin_ratelimit_stats(
     })))
 }
 
+// ---------- Liveness / readiness / metrics ----------
+
+/// Pure liveness probe. Always 200 as long as the process can answer
+/// — kept separate from `/readyz` so a temporarily unhealthy
+/// dependency (e.g. the DB) won't take the pod out of rotation.
+async fn healthz() -> impl IntoResponse {
+    Json(json!({ "ok": true }))
+}
+
+/// Readiness probe. Pings the DB and verifies the Chromium binary
+/// resolves; either failing returns 503 so a load balancer can route
+/// around this instance. We treat a missing Chromium as a soft
+/// warning, not a failure, because some deployments may legitimately
+/// only serve HTML.
+async fn readyz(State(state): State<AppState>) -> Response {
+    let mut checks = serde_json::Map::new();
+    let mut overall_ok = true;
+
+    // DB check
+    let db_ok = sqlx::query_scalar::<_, i64>("SELECT 1")
+        .fetch_one(&state.pool)
+        .await
+        .is_ok();
+    checks.insert("db".into(), serde_json::Value::Bool(db_ok));
+    if !db_ok {
+        overall_ok = false;
+    }
+
+    // Chromium binary check
+    let chromium_ok = which_binary(&state.chromium_bin);
+    checks.insert("chromium".into(), serde_json::Value::Bool(chromium_ok));
+    // Chromium absence is a soft warning, not a 503.
+
+    let status = if overall_ok {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    let body = json!({ "ok": overall_ok, "checks": checks });
+    (status, Json(body)).into_response()
+}
+
+fn which_binary(bin: &str) -> bool {
+    use std::path::Path;
+    let path = Path::new(bin);
+    if path.is_absolute() {
+        return path.exists();
+    }
+    // Search PATH
+    if let Ok(paths) = std::env::var("PATH") {
+        for p in std::env::split_paths(&paths) {
+            if p.join(bin).exists() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+async fn metrics_handler(State(state): State<AppState>) -> Response {
+    // Collect runtime gauges right at scrape time so the values aren't
+    // staler than they have to be.
+    let url_watches_active = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM url_watches WHERE enabled = 1",
+    )
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
+    let jobs_queued =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM jobs WHERE status = 'queued'")
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
+    let jobs_running =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM jobs WHERE status = 'running'")
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
+    let gauges = RuntimeGauges {
+        db_pool_size: state.pool.size() as u64,
+        url_watches_active: url_watches_active.max(0) as u64,
+        jobs_queued: jobs_queued.max(0) as u64,
+        jobs_running: jobs_running.max(0) as u64,
+        rate_limit_buckets: state.rate_limiter.stats().buckets as u64,
+    };
+    let body = state.metrics.render(&gauges);
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(
+            "content-type",
+            "text/plain; version=0.0.4; charset=utf-8",
+        )
+        .body(Body::from(body))
+        .expect("metrics body")
+}
+
+// ---------- Observability middleware ----------
+
+/// Request-ID middleware: honours an inbound `X-Request-Id` (so a
+/// reverse proxy can stitch logs together end-to-end) or generates a
+/// fresh v4 UUID, and echoes it on the response. The id is also put
+/// into the request's extensions so handlers can include it in error
+/// reports if they ever want to.
+async fn request_id_middleware(mut req: Request, next: Next) -> Response {
+    use axum::http::HeaderName;
+    static REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
+
+    let id = req
+        .headers()
+        .get(&REQUEST_ID)
+        .and_then(|h| h.to_str().ok())
+        .filter(|s| !s.is_empty() && s.len() <= 128)
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let header_value = HeaderValue::from_str(&id)
+        .unwrap_or_else(|_| HeaderValue::from_static("invalid"));
+    req.extensions_mut().insert(RequestId(id.clone()));
+
+    let mut resp = next.run(req).await;
+    resp.headers_mut().insert(REQUEST_ID.clone(), header_value);
+    resp
+}
+
+/// Attached to the request extensions so deeper handlers can include
+/// the id in their own tracing spans / error reports. Currently unread
+/// — kept for forward compatibility.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct RequestId(String);
+
+/// Per-request timing + counter middleware. Records the elapsed time
+/// into the metrics histogram and increments the per-path counter.
+/// Path normalisation keeps high-cardinality bits (`{id}`) out of the
+/// counter keys.
+async fn observe_middleware(
+    State(state): State<AppState>,
+    req: Request,
+    next: Next,
+) -> Response {
+    let method = req.method().clone();
+    let path = req.uri().path().to_string();
+    let started = std::time::Instant::now();
+    let resp = next.run(req).await;
+    let elapsed = started.elapsed().as_secs_f64();
+    state.metrics.observe_request(
+        method.as_str(),
+        &normalise_path(&path),
+        resp.status().as_u16(),
+        elapsed,
+    );
+    resp
+}
+
+/// Collapse high-cardinality path segments (numeric ids, share tokens)
+/// to placeholders so the metrics labels stay bounded.
+fn normalise_path(path: &str) -> String {
+    let segs: Vec<&str> = path.split('/').collect();
+    let mut out = String::with_capacity(path.len());
+    for (i, seg) in segs.iter().enumerate() {
+        if i > 0 {
+            out.push('/');
+        }
+        if seg.parse::<u64>().is_ok() {
+            out.push_str("{id}");
+        } else if seg.len() > 24 && seg.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            out.push_str("{token}");
+        } else {
+            out.push_str(seg);
+        }
+    }
+    out
+}
+
 async fn not_found() -> impl IntoResponse {
     (
         StatusCode::NOT_FOUND,
@@ -447,8 +659,23 @@ async fn convert_handler(
     if let Some(ctx) = &ctx {
         usage::reserve(&state.pool, &ctx.user, ctx.api_key_id, "convert", 1).await?;
     }
-    let res = convert::run(&body, &state, ctx.as_ref().map(|c| &c.user)).await?;
-    Ok(Json(res))
+    let is_pdf = body.output.eq_ignore_ascii_case("pdf");
+    let res = convert::run(&body, &state, ctx.as_ref().map(|c| &c.user)).await;
+    match &res {
+        Ok(_) => {
+            state.metrics.conversions_total.inc();
+            if is_pdf {
+                state.metrics.pdf_renders_total.inc();
+            }
+        }
+        Err(_) => {
+            state.metrics.conversion_failures_total.inc();
+            if is_pdf {
+                state.metrics.pdf_render_failures_total.inc();
+            }
+        }
+    }
+    Ok(Json(res?))
 }
 
 // ---------- Batch ----------

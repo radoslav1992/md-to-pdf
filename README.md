@@ -140,6 +140,27 @@ Every endpoint is reachable at two paths:
 Future breaking changes will land at `/api/v2/...` without disturbing
 v1. New clients should always prefer the explicit version.
 
+### Ops
+
+- `GET /api/v1/healthz` — pure liveness probe; always 200.
+- `GET /api/v1/readyz`  — readiness probe; pings the DB and checks the
+  Chromium binary. Returns 503 when the DB is unreachable. Chromium
+  absence is reported as a soft warning, not a hard fail.
+- `GET /api/v1/metrics` — Prometheus text-format scrape: request /
+  response counters, a `udc_request_duration_seconds` histogram, and
+  gauges for DB pool size, active URL watches, queued/running jobs,
+  rate-limit buckets, and uptime.
+
+These three paths plus `/health`, `/openapi.yaml`, and `/openapi.json`
+bypass the rate limiter so monitors and Prometheus scrapes never get
+throttled.
+
+Every response carries an `X-Request-Id` header. Inbound
+`X-Request-Id` values (set by a reverse proxy) are honoured if
+present, capped at 128 chars; otherwise the server generates a v4
+UUID. Set `RUST_LOG_FORMAT=json` to get one-line JSON log records
+suitable for Loki / Grafana / CloudWatch / Datadog ingestion.
+
 ### OpenAPI & Docs
 
 - `GET /api/v1/openapi.yaml` — the hand-written OpenAPI 3.1 spec

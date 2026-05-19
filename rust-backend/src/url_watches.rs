@@ -322,8 +322,10 @@ async fn tick(state: &AppState, http: &reqwest::Client) -> Result<(), ConvertErr
     .await?;
 
     for watch in due {
+        state.metrics.url_watch_polls_total.inc();
         if let Err(e) = process_one(state, http, &watch).await {
             tracing::warn!(watch_id = watch.id, error = %e, "watch poll failed");
+            state.metrics.url_watch_failures_total.inc();
             // Record the error so the dashboard can show it.
             let _ = sqlx::query(
                 "UPDATE url_watches SET last_polled_at = ?1, last_error = ?2, updated_at = ?1 \
@@ -436,6 +438,11 @@ async fn process_one(
     }
     let delivery = req.body(body_bytes).send().await;
     let delivered = matches!(&delivery, Ok(r) if r.status().is_success());
+    if delivered {
+        state.metrics.url_watch_deliveries_total.inc();
+    } else {
+        state.metrics.url_watch_failures_total.inc();
+    }
 
     sqlx::query(
         "UPDATE url_watches SET last_polled_at = ?1, last_seen_at = ?1, last_seen_hash = ?2, \
