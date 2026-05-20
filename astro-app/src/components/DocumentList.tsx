@@ -274,14 +274,18 @@ export default function DocumentList() {
                 <span className="font-mono">{openDoc.input_type}</span> · saved{' '}
                 {new Date(openDoc.created_at * 1000).toLocaleString()}
               </p>
-              {(openDoc.folder || openDoc.tags.length > 0) && (
+              {/* Defensive: tags is `string[]` in the typings, but a stale
+                  server (pre-DocumentDetail) returned the raw JSON-string
+                  from the SQLite column and crashed this render with
+                  `n.tags.map is not a function`. Keep the guard. */}
+              {(openDoc.folder || (Array.isArray(openDoc.tags) && openDoc.tags.length > 0)) && (
                 <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px]">
                   {openDoc.folder && (
                     <span className="text-stone-500">
                       📁 <span className="font-mono">{openDoc.folder}</span>
                     </span>
                   )}
-                  {openDoc.tags.map((t) => (
+                  {(Array.isArray(openDoc.tags) ? openDoc.tags : []).map((t) => (
                     <span
                       key={t}
                       className="text-brand-700 bg-brand-50 border border-brand-100 rounded-full px-1.5 py-0.5"

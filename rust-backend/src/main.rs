@@ -767,7 +767,7 @@ async fn documents_create(
         return Err(ConvertError::PremiumRequired);
     }
     let doc = documents::save(&state.pool, &user, &payload).await?;
-    Ok(Json(json!({ "ok": true, "document": doc })))
+    Ok(Json(json!({ "ok": true, "document": db::DocumentDetail::from(doc) })))
 }
 
 async fn documents_get(
@@ -777,7 +777,7 @@ async fn documents_get(
 ) -> Result<Json<serde_json::Value>, ConvertError> {
     let user = auth::require_user(&state, &jar).await?;
     let doc = documents::get(&state.pool, &user, id).await?;
-    Ok(Json(json!({ "ok": true, "document": doc })))
+    Ok(Json(json!({ "ok": true, "document": db::DocumentDetail::from(doc) })))
 }
 
 async fn documents_update(
@@ -788,7 +788,7 @@ async fn documents_update(
 ) -> Result<Json<serde_json::Value>, ConvertError> {
     let user = auth::require_user(&state, &jar).await?;
     let doc = documents::update(&state.pool, &user, id, &payload).await?;
-    Ok(Json(json!({ "ok": true, "document": doc })))
+    Ok(Json(json!({ "ok": true, "document": db::DocumentDetail::from(doc) })))
 }
 
 async fn documents_delete(
@@ -1113,7 +1113,7 @@ async fn document_versions_restore(
 ) -> Result<Json<serde_json::Value>, ConvertError> {
     let ctx = auth::require(&state, &jar, authorization_header(&headers)).await?;
     let doc = documents::restore_version(&state.pool, &ctx.user, id, vid).await?;
-    Ok(Json(json!({ "ok": true, "document": doc })))
+    Ok(Json(json!({ "ok": true, "document": db::DocumentDetail::from(doc) })))
 }
 
 // ---------- Encrypted documents ----------
