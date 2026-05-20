@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, type DocumentSummary, type SavedDocument } from '../lib/api';
+import { useUser } from '../lib/useUser';
 
 type FolderFilter = '__all__' | '__root__' | string;
 
 export default function DocumentList() {
+  const userState = useUser();
   const [items, setItems] = useState<DocumentSummary[] | null>(null);
   const [folders, setFolders] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
@@ -88,8 +90,29 @@ export default function DocumentList() {
     return parts;
   }, [debouncedQuery, folderFilter, tagFilter]);
 
-  if (items === null && !error) {
+  if (userState.status === 'loading' || (items === null && !error)) {
     return <p className="text-stone-500 text-sm">Loading…</p>;
+  }
+
+  /* Anonymous visitor — show a real sign-in CTA rather than a tiny red
+     "authentication required" pill buried inside the documents grid.
+     Previously this looked like "empty page + cryptic error" which
+     several users read as a bug. */
+  if (userState.status === 'anon') {
+    return (
+      <div className="card p-10 text-center max-w-xl mx-auto">
+        <div className="text-4xl">🔒</div>
+        <h2 className="mt-3 text-xl font-semibold text-stone-900">Sign in to see your documents</h2>
+        <p className="mt-2 text-sm text-stone-600">
+          Saved conversions, folder organisation, version history and share
+          links live in your account.
+        </p>
+        <div className="mt-5 flex items-center justify-center gap-2">
+          <a href="/login?next=/dashboard" className="btn-primary">Log in</a>
+          <a href="/signup?next=/dashboard" className="btn-secondary">Create an account</a>
+        </div>
+      </div>
+    );
   }
 
   return (

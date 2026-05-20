@@ -125,7 +125,7 @@ export default function DocumentSidebar({ documentId, isPremium, onRestored }: P
         </div>
       )}
 
-      <details open className="border border-stone-200 rounded-lg bg-white">
+      <details open className="border border-stone-200 rounded-lg bg-white dark:bg-stone-900 dark:border-stone-800">
         <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-stone-700 select-none">
           Version history {versions ? `(${versions.length})` : ''}
         </summary>
@@ -161,16 +161,35 @@ export default function DocumentSidebar({ documentId, isPremium, onRestored }: P
         </div>
       </details>
 
-      <details className="border border-stone-200 rounded-lg bg-white">
-        <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-stone-700 select-none">
+      {/* Share is the most-asked-for action after saving — open by default so
+          users find it without hunting through accordions. */}
+      <details open className="border border-stone-200 rounded-lg bg-white dark:bg-stone-900 dark:border-stone-800">
+        <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-stone-700 select-none dark:text-stone-200">
           Share links {shares ? `(${shares.length})` : ''} {isPremium ? '' : '· Premium'}
         </summary>
-        <div className={`p-3 border-t border-stone-200 ${isPremium ? '' : 'opacity-60 pointer-events-none'}`}>
+        {!isPremium ? (
+          /* Premium-only feature. Previously we dimmed the controls with
+             `pointer-events-none` and gave no explanation — users saw a
+             greyed-out share button and assumed it was broken. Show an
+             explicit upgrade card instead. */
+          <div className="p-3 border-t border-stone-200 dark:border-stone-800 text-xs text-stone-600 dark:text-stone-300 space-y-2">
+            <p>
+              Public share links and embeddable iframes are a premium feature.
+            </p>
+            <a
+              href="/pricing"
+              className="inline-block bg-brand-600 hover:bg-brand-700 text-white px-3 py-1.5 rounded-md font-medium"
+            >
+              Upgrade to share →
+            </a>
+          </div>
+        ) : (
+        <div className="p-3 border-t border-stone-200 dark:border-stone-800">
           <div className="grid grid-cols-2 gap-2">
             <select
               value={shareFormat}
               onChange={(e) => setShareFormat(e.target.value as 'html' | 'pdf')}
-              className="border border-stone-300 rounded-md px-2 py-1 text-xs bg-white"
+              className="border border-stone-300 rounded-md px-2 py-1 text-xs bg-white dark:bg-stone-800 dark:border-stone-700 dark:text-stone-100"
             >
               <option value="html">HTML</option>
               <option value="pdf">PDF</option>
@@ -181,7 +200,7 @@ export default function DocumentSidebar({ documentId, isPremium, onRestored }: P
               value={shareExpiresDays}
               onChange={(e) => setShareExpiresDays(e.target.value)}
               placeholder="Expires (days)"
-              className="border border-stone-300 rounded-md px-2 py-1 text-xs bg-white"
+              className="border border-stone-300 rounded-md px-2 py-1 text-xs bg-white dark:bg-stone-800 dark:border-stone-700 dark:text-stone-100 dark:placeholder:text-stone-500"
             />
           </div>
           <input
@@ -189,7 +208,7 @@ export default function DocumentSidebar({ documentId, isPremium, onRestored }: P
             value={sharePassword}
             onChange={(e) => setSharePassword(e.target.value)}
             placeholder="Password (optional)"
-            className="mt-2 w-full border border-stone-300 rounded-md px-2 py-1 text-xs bg-white"
+            className="mt-2 w-full border border-stone-300 rounded-md px-2 py-1 text-xs bg-white dark:bg-stone-800 dark:border-stone-700 dark:text-stone-100 dark:placeholder:text-stone-500"
           />
           <button
             type="button"
@@ -200,13 +219,17 @@ export default function DocumentSidebar({ documentId, isPremium, onRestored }: P
           </button>
 
           {newShare && (
-            <div className="mt-3 bg-warn-50 border border-warn-100 rounded p-2 space-y-2">
+            /* "Link created" panel uses the warn accent so it grabs the
+               eye after a click. In dark mode we shift the panel to a
+               dark amber tint so the body text (which the global rule
+               flips to stone-100) stays legible against it. */
+            <div className="mt-3 bg-warn-50 border border-warn-100 rounded p-2 space-y-2 dark:bg-amber-950/40 dark:border-amber-900/60">
               <div>
-                <p className="text-xs text-warn-800 font-medium">Link created — copy it now</p>
+                <p className="text-xs text-warn-800 font-medium dark:text-amber-200">Link created — copy it now</p>
                 <code className="block mt-1 text-xs font-mono break-all">{newShare.url}</code>
               </div>
               <div>
-                <p className="text-[11px] uppercase tracking-wide font-semibold text-warn-800/80">
+                <p className="text-[11px] uppercase tracking-wide font-semibold text-warn-800/80 dark:text-amber-200/80">
                   Embed
                 </p>
                 <code className="block mt-1 text-xs font-mono break-all">
@@ -214,7 +237,7 @@ export default function DocumentSidebar({ documentId, isPremium, onRestored }: P
                 </code>
                 <button
                   type="button"
-                  className="mt-1 text-[11px] text-warn-800 hover:underline"
+                  className="mt-1 text-[11px] text-warn-800 hover:underline dark:text-amber-200"
                   onClick={() =>
                     navigator.clipboard.writeText(
                       `<iframe src="${absoluteEmbedUrl(newShare.token)}" width="100%" height="600" frameborder="0" sandbox="allow-same-origin allow-scripts"></iframe>`,
@@ -253,6 +276,7 @@ export default function DocumentSidebar({ documentId, isPremium, onRestored }: P
             </ul>
           )}
         </div>
+        )}
       </details>
     </div>
   );
