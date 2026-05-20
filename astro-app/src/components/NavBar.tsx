@@ -31,10 +31,17 @@ function isActive(currentPath: string | undefined, href: string): boolean {
 export default function NavBar({ currentPath }: Props) {
   const state = useUser();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    if (typeof document === 'undefined') return 'light';
-    return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
-  });
+  /* Always start at 'light' so the initial client render matches the SSR
+     output (which can't know the user's preferred scheme). The inline
+     theme bootstrap in BaseLayout adds the `dark` class to <html> before
+     hydration, so the cascade renders correctly even when our React
+     state momentarily says 'light' — we then sync the state from the
+     DOM in an effect, after hydration is safe. This avoids React
+     hydration error #418 in dark mode. */
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  useEffect(() => {
+    if (document.documentElement.classList.contains('dark')) setTheme('dark');
+  }, []);
 
   const toggleTheme = useCallback(() => {
     setTheme((cur) => {

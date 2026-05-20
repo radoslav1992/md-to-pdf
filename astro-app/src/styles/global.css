@@ -22,6 +22,21 @@
     background: #15171c;
     color: #e7e5e4; /* stone-200 */
   }
+  /* Most components were written with light-mode `text-stone-{900,800,700,600,500}`
+     and `bg-white` without ever adding the matching `dark:` variants — pages
+     looked unreadable in dark mode (h1s dark-on-dark, document titles
+     invisible, etc.). Rather than touching every component, we flip these
+     specific utilities globally inside `html.dark`. Components that need
+     to opt out can still set an explicit `dark:text-…` variant — those
+     take precedence by ordering in the cascade.
+     We leave `bg-white` alone: it's intentional inside preview iframes,
+     embed cards, and the printable share viewer. The specific cards that
+     need a dark background already use the `.card` component class. */
+  html.dark .text-stone-900 { color: theme('colors.stone.100'); }
+  html.dark .text-stone-800 { color: theme('colors.stone.200'); }
+  html.dark .text-stone-700 { color: theme('colors.stone.300'); }
+  html.dark .text-stone-600 { color: theme('colors.stone.400'); }
+  html.dark .text-stone-500 { color: theme('colors.stone.400'); }
   /* Slightly tighter, more confident headings — gives the warmth some bones. */
   h1, h2, h3 {
     letter-spacing: -0.02em;

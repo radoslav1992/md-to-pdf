@@ -494,7 +494,7 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Document title"
-            className="flex-1 min-w-[180px] border border-stone-300 rounded-md px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+            className="flex-1 min-w-[180px] border border-stone-300 rounded-md px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 dark:bg-stone-800 dark:border-stone-700 dark:text-stone-100 dark:placeholder:text-stone-500"
           />
         </div>
 
@@ -505,14 +505,14 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
               value={folder}
               onChange={(e) => setFolder(e.target.value)}
               placeholder="Folder (e.g. Work/Drafts) — optional"
-              className="flex-1 min-w-[160px] border border-stone-300 rounded-md px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+              className="flex-1 min-w-[160px] border border-stone-300 rounded-md px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 dark:bg-stone-800 dark:border-stone-700 dark:text-stone-100 dark:placeholder:text-stone-500"
             />
             <input
               type="text"
               value={tagsInput}
               onChange={(e) => setTagsInput(e.target.value)}
               placeholder="Tags, comma-separated"
-              className="flex-1 min-w-[160px] border border-stone-300 rounded-md px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+              className="flex-1 min-w-[160px] border border-stone-300 rounded-md px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 dark:bg-stone-800 dark:border-stone-700 dark:text-stone-100 dark:placeholder:text-stone-500"
             />
           </div>
         )}
@@ -559,7 +559,7 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                 onClick={save}
                 disabled={saving || !result}
                 title={isAuthed ? 'Save to your dashboard' : 'Log in to save'}
-                className="border border-stone-300 hover:border-brand-500 disabled:opacity-50 text-stone-700 hover:text-brand-700 font-medium px-4 py-1.5 rounded-md text-sm transition"
+                className="bg-white border border-stone-300 hover:border-brand-500 disabled:opacity-50 text-stone-700 hover:text-brand-700 font-medium px-4 py-1.5 rounded-md text-sm transition dark:bg-stone-800 dark:border-stone-700 dark:text-stone-100 dark:hover:bg-stone-700"
               >
                 {saving ? 'Saving…' : isAuthed ? 'Save' : 'Log in to save'}
               </button>
@@ -846,7 +846,7 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
                 onChange={(e) => setCustomCss(e.target.value)}
                 placeholder="body { font-family: 'My Font'; }"
                 spellCheck={false}
-                className="w-full h-24 font-mono text-xs border border-stone-300 rounded-md p-2 bg-white"
+                className="w-full h-24 font-mono text-xs border border-stone-300 rounded-md p-2 bg-white dark:bg-stone-800 dark:border-stone-700 dark:text-stone-100"
               />
             </div>
 
@@ -901,7 +901,7 @@ export default function ConverterEditor({ anonymousMode = false, initialData }: 
             }}
             onDrop={onTextareaDrop}
             spellCheck={false}
-            className="w-full h-[460px] font-mono text-sm border border-stone-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            className="w-full h-[460px] font-mono text-sm border border-stone-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white dark:bg-stone-900 dark:border-stone-700 dark:text-stone-100"
           />
           {dragActive && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-brand-50/80 rounded-lg border-2 border-dashed border-brand-400 text-sm font-medium text-brand-800">
