@@ -131,6 +131,58 @@ impl From<&Document> for DocumentSummary {
     }
 }
 
+/// API representation of a single document. `Document` mirrors the
+/// SQLite row 1:1 (so it has `tags: Option<String>` storing the raw
+/// JSON column, and `is_encrypted: i64` for SQLite's bool-as-int),
+/// which would serialise straight through to the frontend with
+/// surprising types — the React code expects `tags: string[]` and
+/// crashes with `n.tags.map is not a function` when it sees a string.
+/// Always go through `DocumentDetail` when sending a single document
+/// over the wire so the wire shape matches what the TypeScript types
+/// declare.
+#[derive(Debug, Clone, Serialize)]
+pub struct DocumentDetail {
+    pub id: i64,
+    pub user_id: i64,
+    pub title: String,
+    pub input_type: String,
+    pub output_type: String,
+    pub content: String,
+    pub rendered_html: Option<String>,
+    pub theme: Option<String>,
+    pub custom_css: Option<String>,
+    pub pdf_options: Option<String>,
+    pub is_encrypted: bool,
+    pub encryption_salt: Option<String>,
+    pub folder: Option<String>,
+    pub tags: Vec<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+impl From<Document> for DocumentDetail {
+    fn from(d: Document) -> Self {
+        DocumentDetail {
+            id: d.id,
+            user_id: d.user_id,
+            title: d.title,
+            input_type: d.input_type,
+            output_type: d.output_type,
+            content: d.content,
+            rendered_html: d.rendered_html,
+            theme: d.theme,
+            custom_css: d.custom_css,
+            pdf_options: d.pdf_options,
+            is_encrypted: d.is_encrypted != 0,
+            encryption_salt: d.encryption_salt,
+            folder: d.folder,
+            tags: parse_tags(d.tags.as_deref()),
+            created_at: d.created_at,
+            updated_at: d.updated_at,
+        }
+    }
+}
+
 /// Decode the tags column (JSON array of strings) into a Vec. Returns
 /// an empty vector on null or any parse failure — tags are decorative,
 /// never load-bearing.
