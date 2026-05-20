@@ -1,0 +1,27 @@
+---
+/**
+ * Embeddable share-link viewer. Same data as `/s` but with no chrome —
+ * intended to be dropped into a third-party site via `<iframe>`. The
+ * companion Caddy rule strips `X-Frame-Options` and sets a permissive
+ * `Content-Security-Policy: frame-ancestors *` so cross-origin
+ * embedding actually works.
+ */
+import EmbedViewer from '../components/EmbedViewer.tsx';
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Embedded document</title>
+    <style>
+      html, body { margin: 0; padding: 0; height: 100%; background: #fff; }
+      body { font-family: system-ui, sans-serif; }
+    </style>
+  </head>
+  <body>
+    <EmbedViewer client:load />
+  </body>
+</html>
