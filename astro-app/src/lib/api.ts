@@ -300,9 +300,23 @@ export interface ConvertResult {
   error?: string;
 }
 
+/**
+ * Optional absolute origin for the API, baked in at build time.
+ *
+ * By default this is empty, so all requests hit same-origin `/api/*` — the
+ * arrangement used both by the Caddy/Docker deploy and by the Cloudflare Pages
+ * function that proxies `/api/*` to the Rust backend (keeping auth cookies
+ * first-party). Set `PUBLIC_API_BASE` (e.g. `https://api.example.com`) only
+ * when the static site is served from a different origin than the API; in that
+ * case we also switch to `credentials: 'include'` so the session cookie rides
+ * along on cross-origin requests.
+ */
+const API_BASE = (import.meta.env.PUBLIC_API_BASE ?? '').replace(/\/$/, '');
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    credentials: 'same-origin',
+  const url = API_BASE ? `${API_BASE}${path}` : path;
+  const res = await fetch(url, {
+    credentials: API_BASE ? 'include' : 'same-origin',
     ...init,
     headers: {
       'content-type': 'application/json',

@@ -1,0 +1,27 @@
+# Cloudflare Pages configuration for the Universal Document Converter frontend.
+#
+# The static Astro site is built into `astro-app/dist` and the catch-all in
+# `functions/api/[[path]].ts` reverse-proxies `/api/*` to the Rust backend
+# (set the `API_ORIGIN` variable in the Pages project / below).
+#
+# Deploy from the repo root:
+#   npm run build:web
+#   npx wrangler pages deploy
+#
+# Or wire up Git integration in the Cloudflare dashboard with:
+#   Build command:            npm install && npm run build:web
+#   Build output directory:   astro-app/dist
+#   Root directory:           /            (functions/ lives at the repo root)
+
+name = "universal-document-converter"
+compatibility_date = "2024-11-01"
+pages_build_output_dir = "astro-app/dist"
+
+# Set the backend origin the /api/* proxy forwards to. Prefer configuring this
+# as a (optionally encrypted) variable in the Pages dashboard so it can differ
+# per environment; the value here is the production default.
+[vars]
+API_ORIGIN = "https://api.example.com"
+
+[env.preview.vars]
+API_ORIGIN = "https://api-staging.example.com"

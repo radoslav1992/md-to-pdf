@@ -1,0 +1,30 @@
+# Cloudflare Pages response headers. Mirrors the security posture of the
+# Caddyfile used in the Docker deploy.
+#
+# Clickjacking protection uses CSP `frame-ancestors` (the modern replacement
+# for X-Frame-Options) so the embed viewer can selectively opt in to being
+# framed by third parties — a more specific rule below overrides the default.
+#
+# Note: `/api/*` responses come from the proxy function and keep the backend's
+# own headers, so these rules only shape the static asset / app shell origin.
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Content-Security-Policy: frame-ancestors 'self'
+
+# The embed viewer must be loadable inside a third-party <iframe>, so it
+# advertises a permissive frame-ancestors instead.
+/embed
+  Content-Security-Policy: frame-ancestors *
+  Referrer-Policy: no-referrer
+
+/embed/*
+  Content-Security-Policy: frame-ancestors *
+  Referrer-Policy: no-referrer
+
+# Long-cache the fingerprinted build assets.
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable

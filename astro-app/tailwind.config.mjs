@@ -7,36 +7,49 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Primary: teal — productive, calm, modern.
+        // Primary: Claude's warm clay / terracotta. Calm, editorial, human —
+        // the signature of the claude.ai look. Most components reference these
+        // `brand-*` tokens, so this palette drives the whole product's accent.
         brand: {
-          50: '#f0fdfa',
-          100: '#ccfbf1',
-          200: '#99f6e4',
-          300: '#5eead4',
-          400: '#2dd4bf',
-          500: '#14b8a6',
-          600: '#0d9488',
-          700: '#0f766e',
-          800: '#115e59',
-          900: '#134e4a',
+          50: '#fdf6f2',
+          100: '#fae8df',
+          200: '#f3ccb9',
+          300: '#e9aa8c',
+          400: '#df8c66',
+          500: '#d97757', // Claude clay
+          600: '#c2603f',
+          700: '#a14a30',
+          800: '#833d2b',
+          900: '#6b3326',
         },
-        // Accent: peach/orange — for premium badges, celebratory moments,
-        // calls to action that need to pop against the cool primary.
+        // Accent: a softer amber, harmonised with the clay primary. Used for
+        // premium badges and celebratory moments that need to lift off the page.
         peach: {
-          50: '#fff7ed',
-          100: '#ffedd5',
-          200: '#fed7aa',
-          300: '#fdba74',
-          400: '#fb923c',
-          500: '#f97316',
-          600: '#ea580c',
-          700: '#c2410c',
+          50: '#fdf6ed',
+          100: '#fbe9d3',
+          200: '#f6d2a8',
+          300: '#efb574',
+          400: '#e89849',
+          500: '#dd7f2b',
+          600: '#c5681f',
+          700: '#9e5119',
         },
-        // Warm neutral page background — replaces pure white everywhere.
+        // Warm paper page background — the claude.ai ivory. Replaces pure white
+        // as the default surface across marketing and app shells.
         cream: {
-          50: '#fffbf3',
-          100: '#fff5e6',
-          200: '#fce8c8',
+          50: '#faf9f5',
+          100: '#f3f1ea',
+          200: '#e9e6dc',
+        },
+        // Warm charcoal scale for dark mode. Claude's dark surfaces keep a hint
+        // of brown rather than going cold blue/black, so the product still feels
+        // like the same warm paper at night.
+        ink: {
+          950: '#1a1915',
+          900: '#1f1e1d',
+          800: '#262624', // elevated cards in dark mode
+          700: '#30302e',
+          600: '#3d3d3a',
         },
         // Semantic feedback. Pulled into one place so call sites use
         // `text-success-700` instead of one-off arbitrary hex.
@@ -65,25 +78,30 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+        // Body / UI — clean grotesque, the closest open alternative to
+        // claude.ai's Styrene.
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        // Display serif for hero headlines — a transitional serif in the spirit
+        // of Claude's Copernicus/Tiempos.
+        serif: ['Newsreader', 'Georgia', 'Cambria', 'Times New Roman', 'serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       boxShadow: {
-        // Soft layered shadows. Avoids the harsh single-pixel grey shadow
-        // Tailwind ships by default.
-        soft: '0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.06)',
-        glow: '0 8px 32px rgba(13, 148, 136, 0.18)',
-        peach: '0 8px 32px rgba(249, 115, 22, 0.22)',
+        // Soft, low-contrast layered shadows in a warm tone — avoids the harsh
+        // single-pixel grey shadow Tailwind ships by default.
+        soft: '0 1px 2px rgba(40, 31, 24, 0.04), 0 4px 14px rgba(40, 31, 24, 0.06)',
+        glow: '0 10px 34px rgba(217, 119, 87, 0.20)',
+        peach: '0 10px 34px rgba(221, 127, 43, 0.22)',
       },
       borderRadius: {
         '4xl': '2rem',
       },
       backgroundImage: {
-        // Subtle warm gradient for hero sections.
+        // Subtle warm clay wash for hero sections — barely-there, calm.
         'hero-warm':
-          'radial-gradient(ellipse at top, rgba(253, 230, 138, 0.45) 0%, rgba(204, 251, 241, 0.45) 30%, rgba(255, 251, 243, 0) 70%)',
+          'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(217, 119, 87, 0.14) 0%, rgba(233, 170, 140, 0.08) 35%, rgba(250, 249, 245, 0) 70%)',
         'hero-mint':
-          'radial-gradient(ellipse at top right, rgba(94, 234, 212, 0.35) 0%, rgba(255, 251, 243, 0) 60%)',
+          'radial-gradient(ellipse at top right, rgba(223, 140, 102, 0.12) 0%, rgba(250, 249, 245, 0) 60%)',
       },
       transitionTimingFunction: {
         bounce: 'cubic-bezier(0.34, 1.56, 0.64, 1)',

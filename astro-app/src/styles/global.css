@@ -12,15 +12,15 @@
     color-scheme: dark;
   }
   body {
-    background: #fffbf3;
-    color: #1c1917; /* stone-900 */
+    background: #faf9f5; /* claude.ai paper ivory */
+    color: #26231f; /* warm near-black */
   }
-  /* Dark palette is a charcoal close to stone-900 with a hint of warmth
-     so it still feels like the same product. Component styles below
-     pick this up via the `dark:` Tailwind variant where relevant. */
+  /* Dark palette is a warm charcoal with a hint of brown so the product
+     still feels like the same paper at night. Component styles below pick
+     this up via the `dark:` Tailwind variant where relevant. */
   html.dark body {
-    background: #15171c;
-    color: #e7e5e4; /* stone-200 */
+    background: #1a1915; /* ink-950 */
+    color: #e7e3d8;
   }
   /* Most components were written with light-mode `text-stone-{900,800,700,600,500}`
      and `bg-white` without ever adding the matching `dark:` variants — pages
@@ -41,6 +41,12 @@
   h1, h2, h3 {
     letter-spacing: -0.02em;
   }
+  /* Editorial display serif — opt in on hero headlines via `font-serif`.
+     Optical sizing keeps large sizes graceful. */
+  .font-serif {
+    font-optical-sizing: auto;
+    letter-spacing: -0.015em;
+  }
   /* Reusable focus ring across all interactive elements. */
   a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
     outline: 2px solid theme('colors.brand.400');
@@ -60,8 +66,8 @@
 @layer components {
   /* Card primitive used across dashboards, panels, list items. */
   .card {
-    @apply bg-white border border-stone-200/80 rounded-2xl shadow-soft
-           dark:bg-stone-900 dark:border-stone-800;
+    @apply bg-white border border-stone-200/70 rounded-2xl shadow-soft
+           dark:bg-ink-800 dark:border-ink-700;
   }
   /* Subtle pill used for tags / metadata. */
   .pill {

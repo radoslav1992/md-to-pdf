@@ -84,6 +84,52 @@ When you point a domain at the IP, change `:80` at the top of `Caddyfile` to
 your domain name and set `COOKIE_SECURE=true` in `.env`. Caddy will provision
 Let's Encrypt automatically on next restart. Open port 443 in ufw.
 
+## Deploying the frontend to Cloudflare Pages
+
+The Astro site is fully static, so it can be served from Cloudflare Pages while
+the Rust API keeps running wherever you host it (the Hetzner box, Fly.io,
+Railway, …). A Pages Function (`functions/api/[[path]].ts`) reverse-proxies
+`/api/*` to the backend so the browser still talks to a single first-party
+origin — that keeps the session cookie first-party with no CORS setup.
+
+```
+functions/api/[[path]].ts   /api/* → API_ORIGIN (the Rust backend)
+astro-app/public/_headers    Security headers + the embed frame-ancestors rule
+wrangler.toml                Pages project config (build output + vars)
+```
+
+**One-off deploy from your machine:**
+
+```sh
+npm install
+npx wrangler login
+# Point the proxy at your backend (or set it in the dashboard / wrangler.toml):
+npx wrangler pages secret put API_ORIGIN   # e.g. https://api.your-domain.com
+npm run cf:deploy
+```
+
+**Git-connected deploys (recommended):** in the Cloudflare dashboard create a
+Pages project from this repo with:
+
+| Setting                | Value                              |
+| ---------------------- | ---------------------------------- |
+| Build command          | `npm install && npm run build:web` |
+| Build output directory | `astro-app/dist`                   |
+| Root directory         | `/` (so `functions/` is picked up) |
+| Environment variable   | `API_ORIGIN=https://api.your-domain.com` |
+
+The backend just needs to be reachable from Cloudflare and to set
+`COOKIE_SECURE=true` (Pages is always HTTPS). If you'd rather skip the proxy and
+call the API on its own origin directly, build the site with
+`PUBLIC_API_BASE=https://api.your-domain.com` instead — the client then sends
+credentialed cross-origin requests (configure CORS on the backend accordingly).
+
+Local emulation of the full Pages setup (static site + proxy function):
+
+```sh
+API_ORIGIN=http://127.0.0.1:8000 npm run cf:dev
+```
+
 ## Local development (without Docker)
 
 You need the Rust toolchain, Node ≥ 20, and Chromium installed locally

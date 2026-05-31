@@ -45,3 +45,7 @@ Thumbs.db
 playwright-report/
 test-results/
 .playwright/
+
+# Cloudflare / Wrangler
+.wrangler/
+.dev.vars

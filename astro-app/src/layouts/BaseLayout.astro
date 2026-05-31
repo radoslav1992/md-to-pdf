@@ -30,9 +30,18 @@ const marketingLinks = [
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
-    <meta name="theme-color" content="#fffbf3" />
+    <meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1a1915" media="(prefers-color-scheme: dark)" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    {/* Inter for UI/body, Newsreader for the editorial serif headlines —
+        the closest open pairing to claude.ai's Styrene + Copernicus. */}
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap"
+    />
     <title>{title}</title>
     {/* Apply the persisted theme before first paint so we don't flash the
         opposite scheme. Falls back to the OS preference when nothing is set. */}
@@ -56,8 +65,8 @@ const marketingLinks = [
       }
     </script>
   </head>
-  <body class="min-h-screen bg-cream-50 text-stone-900 flex flex-col antialiased dark:bg-stone-950 dark:text-stone-100">
-    <header class="sticky top-0 z-40 bg-cream-50/85 backdrop-blur-md border-b border-stone-200/70 dark:bg-stone-900/85 dark:border-stone-800/70">
+  <body class="min-h-screen bg-cream-50 text-stone-900 flex flex-col antialiased dark:bg-ink-950 dark:text-stone-100">
+    <header class="sticky top-0 z-40 bg-cream-50/80 backdrop-blur-md border-b border-stone-200/60 dark:bg-ink-900/80 dark:border-ink-700/70">
       <nav class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
         <a href="/" class="flex items-center gap-2 font-semibold text-base text-stone-900 hover:text-brand-700 transition">
           <span class="inline-flex w-8 h-8 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-glow text-sm font-bold">U</span>
@@ -92,7 +101,7 @@ const marketingLinks = [
       <slot />
     </main>
 
-    <footer class="border-t border-stone-200/70 mt-16 bg-cream-50/60 dark:bg-stone-900/50 dark:border-stone-800/70">
+    <footer class="border-t border-stone-200/70 mt-16 bg-cream-50/60 dark:bg-ink-900/50 dark:border-ink-700/70">
       <div class="max-w-6xl mx-auto px-4 py-10 grid md:grid-cols-3 gap-8 text-sm">
         <div>
           <div class="flex items-center gap-2 font-semibold text-stone-900">

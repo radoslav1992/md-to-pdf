@@ -1,6 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="6" fill="#2563eb"/>
-  <path d="M8 8h10l6 6v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2Z" fill="white" opacity="0.95"/>
-  <path d="M18 8v6h6" fill="none" stroke="#2563eb" stroke-width="1.5"/>
-  <path d="M10 18h12M10 22h8" stroke="#2563eb" stroke-width="1.5" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="clay" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#df8c66"/>
+      <stop offset="1" stop-color="#a14a30"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="url(#clay)"/>
+  <path d="M8 8h10l6 6v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2Z" fill="white" opacity="0.96"/>
+  <path d="M18 8v6h6" fill="none" stroke="#c2603f" stroke-width="1.5"/>
+  <path d="M10 18h12M10 22h8" stroke="#c2603f" stroke-width="1.5" stroke-linecap="round"/>
 </svg>
